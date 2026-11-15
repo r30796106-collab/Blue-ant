@@ -19,7 +19,7 @@ _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _safe_path(value: Any) -> str:
-    if not isinstance(value, str) or not value or "\\x00" in value or "\\\\" in value:
+    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
         raise ValueError("patch paths must be non-empty POSIX relative paths")
     path = PurePosixPath(value)
     if (path.is_absolute() or any(part in {"", ".", ".."} for part in value.split("/"))
