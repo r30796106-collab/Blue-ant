@@ -21,7 +21,7 @@ def main() -> int:
         decision = decision_to_dict(evaluate_bridge_result(bundle))
         destination = Path(args.output)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(decision, indent=2) + "\\n", encoding="utf-8")
+        destination.write_text(json.dumps(decision, indent=2) + "\n, encoding="utf-8")
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         parser.error(str(exc))
         return 2
