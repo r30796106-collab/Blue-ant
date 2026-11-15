@@ -132,6 +132,12 @@ Open **Actions → Blue Ant Multi-Repository Workforce → Run workflow** and pr
 
 The workflow uses read-only checkout permissions and does not persist repository credentials. It is intended for public repositories. Private repositories require a separately configured least-privilege credential and are not enabled by this workflow.
 
+The workflow also accepts a `snapshot_sources` boolean input. Set it to
+`true` to make each specialist inspect its own bounded, private task snapshot
+instead of reading the checkout directly. The same file-count, byte, symlink,
+and credential-file exclusions apply; repositories exceeding the snapshot
+limits fail closed.
+
 ### v1 boundaries
 
 - Current workers are repository analysts/auditors, not autonomous code editors.
