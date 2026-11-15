@@ -127,3 +127,33 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 ## Verification status
 
 The core and first sub-bot fleet passed GitHub Actions on Python 3.12 (19 tests). The project registry/workspace milestone is under review in its own pull request; its tests must pass CI before it is considered verified.
+
+
+## Approved coding-worker patch pipeline (v2 foundation)
+
+A coding worker can prepare a complete file-change proposal for a dedicated,
+disposable project workspace. Blue Ant validates every path and expected
+SHA-256 before writing anything, rejects traversal and symlinks, and requires
+an explicit approval flag before applying changes. File creation and
+replacement are supported; deletion, shell execution, package installation,
+test execution, deployment, and automatic GitHub pushes are not.
+
+```python
+from blue_ant import FileChange, PatchProposal, apply_patch_proposal, sha256_text
+
+proposal = PatchProposal(
+    proposal_id="change-001",
+    project_id="demo",
+    task_id="implement-feature",
+    changes=(
+        FileChange("src/example.py", "print('updated')\\n", sha256_text("print('old')\\n")),
+    ),
+)
+# Apply only after a human has reviewed and approved the proposal.
+result = apply_patch_proposal("/path/to/disposable/workspace", proposal, approved=True)
+```
+
+The patch engine is a guarded workspace writer, not an OS sandbox or a
+multi-file atomic transaction. Run project tests in a separately isolated CI
+runner after applying a proposal. A future GitHub adapter can turn verified
+workspace changes into branch commits and pull requests.
