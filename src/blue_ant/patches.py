@@ -51,7 +51,7 @@ def _safe_relative_path(raw: str) -> PurePosixPath:
     if not isinstance(raw, str) or not raw or "\x00" in raw or "\\" in raw:
         raise ValueError("patch path must be a non-empty POSIX relative path")
     path = PurePosixPath(raw)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if not path.parts or path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         raise ValueError("patch path must not be absolute or contain traversal")
     if path.parts[0] == ".git" or ":" in path.parts[0]:
         raise ValueError("patch path targets a reserved location")
