@@ -1,0 +1,145 @@
+name: Blue Ant Bounded Audit Feedback Loop
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run-bounded-audit-loop:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-loop]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate loop instruction
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          data = json.loads(os.environ.get("ISSUE_BODY") or "")
+          required = {"instruction_id", "project_id", "repository", "ref", "roles", "max_cycles", "task"}
+          if not isinstance(data, dict) or set(data) != required:
+              raise SystemExit("Issue body must contain exactly: " + ", ".join(sorted(required)))
+          for field in ("instruction_id", "project_id"):
+              if not isinstance(data[field], str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", data[field]):
+                  raise SystemExit("Invalid " + field)
+          if not isinstance(data["repository"], str) or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", data["repository"]):
+              raise SystemExit("Only public repositories owned by r30796106-collab are allowed")
+          ref = data["ref"]
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target ref")
+          allowed = {"repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"}
+          roles = data["roles"]
+          if not isinstance(roles, list) or not 1 <= len(roles) <= 4 or any(role not in allowed for role in roles) or len(set(roles)) != len(roles):
+              raise SystemExit("roles must be 1–4 unique approved read-only specialist roles")
+          cycles = data["max_cycles"]
+          if not isinstance(cycles, int) or isinstance(cycles, bool) or not 1 <= cycles <= len(roles):
+              raise SystemExit("max_cycles must be between 1 and the number of selected roles")
+          task = data["task"]
+          if not isinstance(task, str) or not task.strip() or len(task) > 1000:
+              raise SystemExit("task context must contain 1–1000 characters")
+          os.makedirs("instruction", exist_ok=True)
+          with open("instruction/loop.json", "w", encoding="utf-8") as stream:
+              json.dump(data, stream)
+          PY
+
+      - name: Read validated instruction
+        id: instruction
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("instruction/loop.json", encoding="utf-8"))
+          for key in ("instruction_id", "project_id", "repository", "ref", "task"):
+              print(f"{key}={data[key]}")
+          print("roles=" + ",".join(data["roles"]))
+          print("max_cycles=" + str(data["max_cycles"]))
+          PY
+
+      - name: Checkout Blue Ant worker
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Checkout target repository read-only
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.instruction.outputs.repository }}
+          ref: ${{ steps.instruction.outputs.ref }}
+          path: target
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Run bounded sequential audit loop
+        env:
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+          ROLES: ${{ steps.instruction.outputs.roles }}
+          MAX_CYCLES: ${{ steps.instruction.outputs.max_cycles }}
+          TASK_CONTEXT: ${{ steps.instruction.outputs.task }}
+          INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
+        run: |
+          mkdir -p artifacts
+          blue-ant-audit-loop \
+            --project "$PROJECT_ID=target" \
+            --roles "$ROLES" \
+            --max-cycles "$MAX_CYCLES" \
+            --task "$TASK_CONTEXT" \
+            --output "artifacts/$INSTRUCTION_ID-audit-loop.json"
+
+      - name: Upload loop report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-audit-loop-${{ github.run_id }}
+          path: artifacts/${{ steps.instruction.outputs.instruction_id }}-audit-loop.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Return loop result to issue
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          REPORT_PATH: artifacts/${{ steps.instruction.outputs.instruction_id }}-audit-loop.json
+          INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+        with:
+          script: |
+            const fs = require('fs');
+            let report = null;
+            try { report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8')); } catch (_) {}
+            const cycles = report?.cycles || [];
+            const lines = cycles.map(c =>
+              '- Cycle ' + c.cycle + ': **' + c.role + '** — ' + c.status +
+              ', ' + (c.findings || []).length + ' findings' +
+              (c.error ? ' (' + c.error + ')' : '')
+            );
+            const body = [
+              '## Blue Ant bounded audit loop result',
+              '',
+              '- Instruction: `' + process.env.INSTRUCTION_ID + '`',
+              '- Project: `' + process.env.PROJECT_ID + '`',
+              '- Cycles: ' + (report?.cycles_used ?? 0),
+              '- Stop reason: **' + (report?.stop_reason || 'workflow_failed') + '**',
+              '',
+              lines.length ? lines.join('\n') : 'No cycle report was produced.',
+              '',
+              '> Each cycle runs one fixed read-only specialist. The next role is selected from the owner-supplied sequence after success; worker errors stop the loop. Task text is metadata only. No files are changed and target code is not executed.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
