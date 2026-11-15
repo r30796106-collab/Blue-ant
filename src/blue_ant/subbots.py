@@ -5,6 +5,7 @@ shell, access credentials, or modify the inspected repository.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -70,18 +71,27 @@ class SubBotFactory:
         return tuple(SubBot(bot_id=f"blue-ant-{role.value}", role=role) for role in selected)
 
 
-def run_fleet(root: str | Path, bots: Iterable[SubBot]) -> list[Finding]:
-    """Run at most sixteen read-only workers and return stable, sorted findings."""
+def run_fleet(
+    root: str | Path,
+    bots: Iterable[SubBot],
+    *,
+    max_workers: int = 4,
+) -> list[Finding]:
+    """Run specialist workers concurrently with a hard bound and stable output."""
     fleet = tuple(bots)
     if not fleet:
         raise ValueError("at least one sub-bot is required")
     if len(fleet) > 16:
         raise ValueError("fleet exceeds hard maximum of 16 sub-bots")
+    if not 1 <= max_workers <= 16:
+        raise ValueError("max_workers must be between 1 and 16")
     if any(not isinstance(bot, SubBot) for bot in fleet):
         raise ValueError("fleet must contain approved SubBot instances")
     findings: list[Finding] = []
-    for bot in fleet:
-        findings.extend(bot.run(root))
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(fleet)), thread_name_prefix="blue-ant-subbot") as pool:
+        futures = [pool.submit(bot.run, root) for bot in fleet]
+        for future in futures:
+            findings.extend(future.result())
     return sorted(findings, key=lambda item: (item.path, item.bot_id, item.message))
 
 
