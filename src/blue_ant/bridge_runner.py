@@ -114,7 +114,6 @@ def run_bridge_command(
         "plan": plan,
     }))
 
-    command_id = command["command_id"]
     artifacts = {
         "audit": audit_report,
         "plan": plan,
