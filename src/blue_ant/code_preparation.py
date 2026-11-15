@@ -111,10 +111,9 @@ def _fix_case_only_link(root: Path, readme_path: str, content: str, evidence: st
 
 def prepare_task(workspace: str | Path, task: dict[str, Any]) -> dict[str, Any]:
     """Return a prepared full-file draft or a manual-review reason."""
-    result = {"task_id": task.get("task_id"), "status": "manual_review", "path": task.get("path", ""), "strategy": None, "content": "", "reason": "No safe deterministic repair rule matched this task."}
     if not isinstance(task, dict):
-        result["reason"] = "Task must be a structured object."
-        return result
+        return {"task_id": None, "status": "manual_review", "path": "", "strategy": None, "content": "", "reason": "Task must be a structured object."}
+    result = {"task_id": task.get("task_id"), "status": "manual_review", "path": task.get("path", ""), "strategy": None, "content": "", "reason": "No safe deterministic repair rule matched this task."}
     if task.get("kind") != "audit_finding_review" or task.get("role") != "docs_auditor":
         result["reason"] = "Automatic preparation is limited to non-security documentation audit findings."
         return result
