@@ -58,13 +58,15 @@ class SubBotFactory:
         self.max_bots = max_bots
 
     def create_fleet(self, roles: Iterable[SubBotRole] | None = None) -> tuple[SubBot, ...]:
-        selected = tuple(roles or tuple(SubBotRole))
+        selected = tuple(SubBotRole) if roles is None else tuple(roles)
         if not selected:
             raise ValueError("at least one sub-bot role is required")
         if len(selected) > self.max_bots:
             raise ValueError("requested fleet exceeds configured max_bots")
         if len(set(selected)) != len(selected):
             raise ValueError("duplicate sub-bot roles are not allowed")
+        if any(not isinstance(role, SubBotRole) for role in selected):
+            raise ValueError("roles must use approved SubBotRole templates")
         return tuple(SubBot(bot_id=f"blue-ant-{role.value}", role=role) for role in selected)
 
 
@@ -75,6 +77,8 @@ def run_fleet(root: str | Path, bots: Iterable[SubBot]) -> list[Finding]:
         raise ValueError("at least one sub-bot is required")
     if len(fleet) > 16:
         raise ValueError("fleet exceeds hard maximum of 16 sub-bots")
+    if any(not isinstance(bot, SubBot) for bot in fleet):
+        raise ValueError("fleet must contain approved SubBot instances")
     findings: list[Finding] = []
     for bot in fleet:
         findings.extend(bot.run(root))
