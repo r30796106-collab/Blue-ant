@@ -183,14 +183,26 @@ class Workforce:
             )
             prepared.append((job, project.source_root, task_workspace, scan_root))
 
+        shared_indexes: dict[Path, tuple[tuple[str, str], ...]] = {}
+        if self.shared_snapshot_sources:
+            for _, _, _, scan_root in prepared:
+                if scan_root not in shared_indexes:
+                    shared_indexes[scan_root] = SubBot.index_files(scan_root)
+                    self._record(
+                        "shared_snapshot_index_prepared",
+                        snapshot_root=str(scan_root),
+                        files_indexed=len(shared_indexes[scan_root]),
+                    )
+
         def execute(item: tuple[WorkAssignment, Path, Path, Path]) -> WorkResult:
             job, source_root, workspace, scan_root = item
             bot = SubBotFactory(max_bots=1).create_fleet([job.role])[0]
+            indexed_files = shared_indexes.get(scan_root)
             self._record(
                 "worker_started", task_id=job.task_id, project_id=job.project_id, role=job.role.value
             )
             try:
-                findings = tuple(bot.run(scan_root))
+                findings = tuple(bot.run(scan_root, indexed_files=indexed_files))
                 self._record(
                     "worker_succeeded", task_id=job.task_id, project_id=job.project_id,
                     role=job.role.value, findings=len(findings),
