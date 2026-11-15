@@ -523,17 +523,28 @@ file, or chat. The workflow uses the token only for target checkout, branch
 push, and PR creation. Review/test dispatch back to Blue Ant uses the
 workflow-scoped GitHub token and its declared Actions permission.
 
-Each isolated task uses the approved patch CLI's hash-chained audit log at
-`target/.blue-ant/patch-audit.jsonl`. The log is not staged or committed to
-the target repository; it is uploaded as a per-task workflow artifact for
-14 days, including failed patch attempts when the log was created. The log
-contains proposal IDs, paths, and event metadata, not patch contents. Artifact names use
-`blue-ant-patch-audit-<issue-number>-<task-id>`.
-
 A missing or mis-scoped token should fail before target checkout. A successful
 credential preflight does not itself prove that GitHub accepted all write
 operations; verify the complete flow with a disposable test proposal before
 using real project changes.
+
+Approved patch workflows retain their hash-chained audit trail separately from
+the target repository: issue-driven and plan-linked PR workers upload
+`target/.blue-ant/patch-audit.jsonl` as a 14-day artifact, while the disposable
+patch-review worker copies the log into its existing result artifact. Logs
+contain event metadata and changed paths, not patch contents; they are never
+staged or committed to the target repository.
+
+Before dispatching parallel workers, the workflow resolves the approved target
+ref once and pins every isolated worker to that exact commit SHA. Each worker
+checks that the target branch still points to the pinned commit before applying
+the proposal and checks again before opening its PR. If the branch moves during
+preparation, the worker fails closed instead of applying against a different
+baseline or opening a stale PR. The PR body records the pinned base SHA.
+
+Each isolated task also retains its hash-chained patch audit log as a separate
+14-day workflow artifact. The log stays outside the target commit and contains
+proposal IDs, changed paths, and event metadata rather than patch contents.
 
 
 The ChatGPT Bridge enables the workforce hash-chain audit automatically.
