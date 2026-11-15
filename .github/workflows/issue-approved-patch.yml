@@ -1,0 +1,148 @@
+name: Blue Ant Issue-Driven Approved Patch Worker
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  review-patch:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-patch]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate patch instruction
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          data = json.loads(os.environ.get("ISSUE_BODY") or "")
+          required = {"target_repository", "target_ref", "project_id", "proposal", "apply_approved"}
+          if not isinstance(data, dict) or set(data) != required:
+              raise SystemExit("Body must contain exactly: " + ", ".join(sorted(required)))
+          repo = data["target_repository"]
+          if not isinstance(repo, str) or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]+", repo):
+              raise SystemExit("Only public repositories owned by r30796106-collab are allowed")
+          ref = data["target_ref"]
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target ref")
+          project = data["project_id"]
+          if not isinstance(project, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", project):
+              raise SystemExit("Invalid project_id")
+          if not isinstance(data["apply_approved"], bool):
+              raise SystemExit("apply_approved must be a JSON boolean")
+          proposal = data["proposal"]
+          required_proposal = {"proposal_id", "project_id", "task_id", "changes"}
+          if not isinstance(proposal, dict) or set(proposal) != required_proposal:
+              raise SystemExit("Invalid proposal schema")
+          for field in ("proposal_id", "project_id", "task_id"):
+              value = proposal[field]
+              if not isinstance(value, str) or not value.strip() or len(value) > 128:
+                  raise SystemExit(f"Invalid {field}")
+          if proposal["project_id"] != project:
+              raise SystemExit("Proposal project_id must match instruction project_id")
+          changes = proposal["changes"]
+          if not isinstance(changes, list) or not changes or len(changes) > 50:
+              raise SystemExit("Proposal must contain 1–50 changes")
+          total = 0
+          for change in changes:
+              if not isinstance(change, dict) or set(change) != {"path", "content", "expected_sha256"}:
+                  raise SystemExit("Each change must contain exactly path, content, expected_sha256")
+              if not isinstance(change["path"], str) or not isinstance(change["content"], str):
+                  raise SystemExit("Path and content must be strings")
+              total += len(change["content"].encode("utf-8"))
+              digest = change["expected_sha256"]
+              if digest is not None and (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                  raise SystemExit("expected_sha256 must be null or a lowercase SHA-256 digest")
+          if total > 2_000_000:
+              raise SystemExit("Proposal content exceeds 2 MB")
+          os.makedirs("instruction", exist_ok=True)
+          with open("instruction/proposal.json", "w", encoding="utf-8") as f:
+              json.dump(proposal, f, ensure_ascii=False)
+          with open("instruction/metadata.json", "w", encoding="utf-8") as f:
+              json.dump({k: data[k] for k in ("target_repository", "target_ref", "project_id", "apply_approved")}, f)
+          PY
+
+      - name: Read validated metadata
+        id: instruction
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("instruction/metadata.json", encoding="utf-8"))
+          for key in ("target_repository", "target_ref", "project_id", "apply_approved"):
+              print(f"{key}={str(data[key]).lower() if isinstance(data[key], bool) else data[key]}")
+          PY
+
+      - name: Checkout Blue Ant worker
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Checkout disposable target workspace
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.instruction.outputs.target_repository }}
+          ref: ${{ steps.instruction.outputs.target_ref }}
+          path: workspace
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Dry-run or explicitly approved apply
+        env:
+          APPLY_APPROVED: ${{ steps.instruction.outputs.apply_approved }}
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          if [ "$APPLY_APPROVED" = "true" ]; then
+            blue-ant-patch --workspace workspace --proposal instruction/proposal.json --approve 2>&1 | tee artifacts/patch-review.txt
+          else
+            blue-ant-patch --workspace workspace --proposal instruction/proposal.json 2>&1 | tee artifacts/patch-review.txt
+          fi
+          git -C workspace diff --no-ext-diff --binary > artifacts/patch-result.diff
+          git -C workspace status --short > artifacts/workspace-status.txt
+          cp instruction/proposal.json artifacts/proposal.json
+          printf '%s\n' "$APPLY_APPROVED" > artifacts/applied.txt
+
+      - name: Upload patch result
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-issue-patch-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
+
+      - name: Comment result on controlling issue
+        uses: actions/github-script@v7
+        env:
+          APPLY_APPROVED: ${{ steps.instruction.outputs.apply_approved }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+        with:
+          script: |
+            const approved = process.env.APPLY_APPROVED === 'true';
+            const body = [
+              '## Blue Ant patch worker result',
+              '',
+              '- Project: `' + process.env.PROJECT_ID + '`',
+              '- Mode: ' + (approved ? '**explicitly approved apply in disposable runner checkout**' : '**dry-run only**'),
+              '- Artifact: `blue-ant-issue-patch-' + context.runId + '`',
+              '',
+              'The proposal was processed in a temporary checkout only. No branch, commit, push, or pull request was created; target code and tests were not executed.',
+              'Review the uploaded diff/status artifact before any separate repository write or merge.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });

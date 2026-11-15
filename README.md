@@ -263,3 +263,15 @@ target tests or edit project files.
 This creates the V1 **instruction → worker → result comment → next instruction**
 loop. The human/controller remains responsible for reviewing results and
 deciding when to use the separately approval-gated patch worker.
+
+
+## Issue-driven human-gated patch worker
+
+A controller can submit a structured patch proposal through a GitHub issue titled `[blue-ant-patch] ...`. The issue body must be JSON with exactly these fields: `target_repository`, `target_ref`, `project_id`, `proposal`, and `apply_approved`. The proposal uses the same strict `PatchProposal` schema as the CLI.
+
+- Set `apply_approved: false` for validation/dry-run (default recommendation).
+- Set `apply_approved: true` only when a human has reviewed and explicitly approved the exact proposal.
+- The workflow runs the existing hash/path/symlink-guarded patch engine in a disposable checkout and uploads the review, diff, status, and proposal artifacts.
+- The result is posted back to the controlling issue.
+
+Only issues opened by `r30796106-collab` trigger this worker, and only public repositories under that account are accepted. The workflow has read-only repository permissions, does not persist checkout credentials, and never commits, pushes, opens a PR, or merges. Even an approved apply affects only the temporary runner checkout. It does not execute target project code or tests.
