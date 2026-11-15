@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -101,3 +102,82 @@ def test_rejects_symlink_source_root(tmp_path: Path):
 
     with pytest.raises(ValueError, match="symlink"):
         registry.register("project", alias)
+
+
+
+def test_persistent_registry_round_trips_projects_in_stable_order(tmp_path: Path):
+    source_a = tmp_path / "source-a"
+    source_b = tmp_path / "source-b"
+    source_a.mkdir()
+    source_b.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    registry_path = tmp_path / ".blue-ant" / "projects.json"
+
+    registry = ProjectRegistry(workspace_root, registry_path=registry_path)
+    registry.register("trading", source_b)
+    registry.register("elon", source_a)
+
+    loaded = ProjectRegistry(workspace_root, registry_path=registry_path)
+    assert [item.project_id for item in loaded.list_projects()] == ["elon", "trading"]
+    assert loaded.get("elon").source_root == source_a.resolve()
+    assert loaded.workspace_for("elon") == workspace_root / "elon"
+    assert registry_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_persistent_registry_rejects_unsupported_or_malformed_schema(tmp_path: Path):
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(json.dumps({"schema_version": 99, "projects": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+    registry_path.write_text(json.dumps({"schema_version": 1, "projects": "not-a-list"}), encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a list"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_symlink_registry_file(tmp_path: Path):
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps({"schema_version": 1, "projects": []}), encoding="utf-8")
+    linked = tmp_path / "projects.json"
+    linked.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="registry_path"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=linked)
+
+
+def test_persistent_registry_revalidates_registered_source_roots(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    registry_path = tmp_path / "projects.json"
+    ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path).register("project", source)
+    source.rmdir()
+
+    with pytest.raises(ValueError, match="unavailable"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_symlink_parent_and_rolls_back_registration(tmp_path: Path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    source = tmp_path / "source"
+    source.mkdir()
+    registry = ProjectRegistry(tmp_path / "workspaces", registry_path=linked_parent / "projects.json")
+
+    with pytest.raises(ValueError, match="parent directories"):
+        registry.register("project", source)
+    assert registry.list_projects() == ()
+    assert list(real_parent.iterdir()) == []
+
+
+def test_registry_remains_in_memory_when_persistence_is_not_requested(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    registry_path = tmp_path / "projects.json"
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("project", source)
+
+    assert registry.get("project").source_root == source.resolve()
+    assert not registry_path.exists()
