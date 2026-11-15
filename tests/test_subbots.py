@@ -18,6 +18,12 @@ def test_factory_enforces_limit_and_unique_roles():
         SubBotFactory().create_fleet([SubBotRole.REPO_ANALYST, SubBotRole.REPO_ANALYST])
 
 
+def test_run_fleet_enforces_hard_limit():
+    bots = [SubBotFactory().create_fleet([role])[0] for role in SubBotRole]
+    with pytest.raises(ValueError):
+        run_fleet(".", bots * 5)
+
+
 def test_read_only_fleet_reports_inventory_tests_docs_and_patterns(tmp_path: Path):
     (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
     (tmp_path / "tests").mkdir()
@@ -31,6 +37,15 @@ def test_read_only_fleet_reports_inventory_tests_docs_and_patterns(tmp_path: Pat
     assert any("test files" in item.message for item in findings)
     assert any("README" in item.message for item in findings)
     assert any("Dynamic code execution" in item.message for item in findings)
+
+
+def test_symlink_is_not_followed(tmp_path: Path):
+    outside = tmp_path.parent / "blue-ant-outside-secret.txt"
+    outside.write_text("eval('outside')\n", encoding="utf-8")
+    (tmp_path / "external.txt").symlink_to(outside)
+    findings = run_fleet(tmp_path, SubBotFactory().create_fleet())
+    assert not any(item.path == "external.txt" for item in findings)
+    outside.unlink()
 
 
 def test_rejects_non_directory(tmp_path: Path):
