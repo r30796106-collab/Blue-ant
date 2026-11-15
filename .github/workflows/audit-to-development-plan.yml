@@ -188,7 +188,7 @@ jobs:
             if (process.env.JOB_STATUS === 'success' && plan) {
               for (const task of eligible) {
                 if (!task || typeof task.task_id !== 'string' || typeof task.path !== 'string' || !task.path ||
-                    task.path.startsWith('/') || task.path.split('/').includes('..') || task.path.includes('\\\\') || task.path.includes(String.fromCharCode(0))) continue;
+                    task.path.startsWith('/') || task.path.split('/').includes('..') || task.path.includes('\\') || task.path.includes(String.fromCharCode(0))) continue;
                 const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan, task_id: task.task_id, replacement_content: '', apply_approved: false };
                 const taskBody = [
                   '## Blue Ant draft coding task', '',
