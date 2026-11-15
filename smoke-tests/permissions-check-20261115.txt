@@ -1,0 +1,1 @@
+Blue Ant approved coding-worker permission smoke test. Harmless proof file; do not merge.
