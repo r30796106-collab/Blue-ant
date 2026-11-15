@@ -135,12 +135,27 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
         run: |
+          python - <<'PY'
+          import os
+          body = "\n".join([
+              "## Blue Ant approved coding worker",
+              "",
+              "- Project: " + os.environ["PROJECT_ID"],
+              "- Source instruction: #" + os.environ["ISSUE_NUMBER"],
+              "- Patch was applied only after explicit human approval.",
+              "- Review the complete diff and wait for required CI checks before merging.",
+              "",
+              "This workflow does not merge the pull request."
+          ]) + "\n"
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-pr-body.md"), "w", encoding="utf-8") as f:
+              f.write(body)
+          PY
           gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base "$TARGET_REF" \
             --head "$BRANCH" \
             --title "Blue Ant: approved patch for $PROJECT_ID" \
-            --body "## Blue Ant approved coding worker\n\n- Project: `$PROJECT_ID`\n- Source instruction: #$ISSUE_NUMBER\n- Patch was applied only after `apply_approved: true`.\n- Review the complete diff and wait for required CI checks before merging.\n\nThis workflow does not merge the pull request."
+            --body-file "$RUNNER_TEMP/blue-ant-pr-body.md"
       
       - name: Report result on instruction issue
         if: always()
