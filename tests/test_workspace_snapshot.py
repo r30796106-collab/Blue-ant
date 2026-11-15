@@ -137,3 +137,18 @@ def test_snapshot_rejects_invalid_limits(tmp_path: Path):
     source.mkdir()
     with pytest.raises(ValueError, match="max_files"):
         create_workspace_snapshot(source, tmp_path / "snapshot", max_files=0)
+
+
+
+def test_snapshot_rejects_symlinked_destination_parent(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="must not contain symlinks"):
+        create_workspace_snapshot(source, linked_parent / "snapshot")
+
+    assert list(real_parent.iterdir()) == []
