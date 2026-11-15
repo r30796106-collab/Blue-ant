@@ -112,6 +112,7 @@ def evaluate_bridge_result(bundle: Any) -> ControllerDecision:
             "roles": [next_role],
             "max_cycles": 1,
             "task": command["task"],
+            "snapshot_sources": command["snapshot_sources"],
         }
         return ControllerDecision(
             "continue", "next_instruction",
