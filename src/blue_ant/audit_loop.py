@@ -66,6 +66,8 @@ class BoundedAuditLoop:
                     raise TypeError("audit executor must return WorkResult")
                 if result.role != role.value:
                     raise ValueError("worker result role does not match requested role")
+                if result.task_id != task_id:
+                    raise ValueError("worker result task_id does not match requested cycle")
                 findings = tuple(
                     {
                         "bot_id": item.bot_id,
