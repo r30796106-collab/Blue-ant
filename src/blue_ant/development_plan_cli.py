@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         plan = generate_development_plan(audit, tests, project_id=args.project_id)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(plan_to_dict(plan), indent=2) + "\\n", encoding="utf-8")
+        output.write_text(json.dumps(plan_to_dict(plan), indent=2) + "\n", encoding="utf-8")
         print(f"Plan {plan.plan_id}: {len(plan.tasks)} review task(s); human approval required -> {output}")
         return 0
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
