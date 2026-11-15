@@ -1,0 +1,197 @@
+name: Blue Ant Parallel Approved Task Bundle
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate-bundle:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-multi-pr]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      repository: ${{ steps.meta.outputs.repository }}
+      ref: ${{ steps.meta.outputs.ref }}
+      project: ${{ steps.meta.outputs.project }}
+      task_ids: ${{ steps.meta.outputs.task_ids }}
+    steps:
+      - name: Validate owner-authored approval bundle
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          bundle = json.loads(os.environ.get("ISSUE_BODY") or "")
+          os.makedirs("instruction", exist_ok=True)
+          with open("instruction/bundle.json", "w", encoding="utf-8") as f:
+              json.dump(bundle, f, ensure_ascii=False)
+          PY
+
+      - name: Checkout Blue Ant validator
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate and stage task proposals
+        run: |
+          python -m pip install -e "blue-ant[dev]"
+          blue-ant-task-bundle --input instruction/bundle.json --output-dir instruction/tasks
+
+      - name: Publish validated task matrix
+        id: meta
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("instruction/tasks/metadata.json", encoding="utf-8"))
+          print("repository=" + data["target_repository"])
+          print("ref=" + data["target_ref"])
+          print("project=" + data["project_id"])
+          print("task_ids=" + json.dumps([item["task_id"] for item in data["tasks"]], separators=(",", ":")))
+          PY
+
+      - name: Upload isolated task proposals
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-approved-task-bundle
+          path: instruction/tasks/
+          if-no-files-found: error
+          retention-days: 3
+
+  create-isolated-task-prs:
+    needs: validate-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        task_id: ${{ fromJson(needs.validate-bundle.outputs.task_ids) }}
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout Blue Ant patch engine
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant patch engine
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Download isolated task proposals
+        uses: actions/download-artifact@v4
+        with:
+          name: blue-ant-approved-task-bundle
+          path: instruction/tasks
+
+      - name: Checkout target repository at approved base ref
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.validate-bundle.outputs.repository }}
+          ref: ${{ needs.validate-bundle.outputs.ref }}
+          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          path: target
+          persist-credentials: true
+
+      - name: Apply approved patch in isolated runner workspace
+        env:
+          TASK_ID: ${{ matrix.task_id }}
+        run: |
+          set -euo pipefail
+          PROPOSAL="instruction/tasks/$TASK_ID/proposal.json"
+          blue-ant-patch --workspace target --proposal "$PROPOSAL" --approve
+          python - "$PROPOSAL" "$RUNNER_TEMP/changed-paths.nul" <<'PY'
+          import json, sys
+          proposal = json.load(open(sys.argv[1], encoding="utf-8"))
+          with open(sys.argv[2], "wb") as f:
+              for item in proposal["changes"]:
+                  f.write(item["path"].encode("utf-8") + bytes([0]))
+          PY
+          git -C target add --all --pathspec-from-file="$RUNNER_TEMP/changed-paths.nul" --pathspec-file-nul
+          git -C target diff --cached --check
+          if git -C target diff --cached --quiet; then
+            echo "No changes for task $TASK_ID" >&2
+            exit 1
+          fi
+
+      - name: Create task-specific branch and commit
+        id: commit
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+          TASK_ID: ${{ matrix.task_id }}
+        run: |
+          BRANCH="blue-ant/multi-${ISSUE_NUMBER}-${TASK_ID}-${RUN_ID}"
+          git -C target config user.name "github-actions[bot]"
+          git -C target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C target switch -c "$BRANCH"
+          git -C target commit -m "Blue Ant: approved task $TASK_ID"
+          git -C target push --set-upstream origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open task-specific pull request
+        env:
+          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          TARGET_REPOSITORY: ${{ needs.validate-bundle.outputs.repository }}
+          TARGET_REF: ${{ needs.validate-bundle.outputs.ref }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          TASK_ID: ${{ matrix.task_id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROJECT_ID: ${{ needs.validate-bundle.outputs.project }}
+        run: |
+          printf '%s\n' "## Blue Ant approved task: $TASK_ID" "" "- Project: $PROJECT_ID" "- Source issue: #$ISSUE_NUMBER" "- Branch: $BRANCH" "" "This PR was created only after explicit owner approval. It is not merged automatically." > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" --title "Blue Ant: $TASK_ID" --body-file "$RUNNER_TEMP/pr-body.md"
+
+      - name: Dispatch independent review and target tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ needs.validate-bundle.outputs.repository }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+        run: |
+          gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+
+  report:
+    if: always() && github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-multi-pr]')
+    needs: [validate-bundle, create-isolated-task-prs]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Report parallel task outcome
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result = '${{ needs.create-isolated-task-prs.result }}';
+            const validation = '${{ needs.validate-bundle.result }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Blue Ant parallel approved-task result',
+                '',
+                '- Bundle validation: **' + validation + '**',
+                '- Isolated worker matrix: **' + result + '**',
+                '- Each task runs in its own GitHub runner/workspace and branch.',
+                '- Successful tasks open separate pull requests and trigger independent review/test workflows.',
+                '- No pull request is merged automatically.'
+              ].join('\n')
+            });
