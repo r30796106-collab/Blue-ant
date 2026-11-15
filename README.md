@@ -4,7 +4,36 @@ Blue Ant is an independent, resource-aware multi-project workforce for coordinat
 
 ## Current milestone
 
-The first implementation milestone is a deterministic Python core that can execute independent tasks concurrently, respect dependencies, bound retries, enforce an action policy, and write an audit trail.
+The deterministic core includes a bounded task scheduler, deny-by-default action policy, append-only audit writer, resource-capacity policy, and a first template-based sub-bot fleet.
+
+## First sub-bot fleet
+
+Four built-in, read-only specialists can inspect a checked-out repository:
+
+- **Repo Analyst** — inventories text files and file types.
+- **Test Auditor** — locates conventional tests and CI workflows; does not execute project tests.
+- **Docs Auditor** — checks for a project README.
+- **Safety Auditor** — flags selected dynamic-execution and shell-invocation patterns for human review.
+
+The fleet is created from fixed templates with a configurable hard limit (default four). It does not self-replicate, run shell commands, execute inspected project code, access credentials, or modify the target repository. Findings are heuristic and are not a security certification.
+
+### Run locally
+
+Requires Python 3.12 or newer.
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+pytest
+blue-ant-review --repo . --output blue-ant-report.json
+```
+
+### Run through GitHub Actions
+
+Open **Actions → Blue Ant Sub-bot Review → Run workflow**. Optionally provide a public repository in `owner/name` format and a ref. The workflow checks out the target without persisting credentials, runs the four read-only specialists, and uploads a JSON report artifact.
+
+The workflow currently uses the runner's default GitHub token and is intended for public targets. Private target repositories require an explicitly configured, least-privilege credential and are not enabled by default.
 
 ## Reuse-first strategy
 
@@ -34,19 +63,6 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 - Workers cannot change their own permissions or bypass policy.
 - AI integrations are optional and paused by default.
 
-## Development
+## Verification status
 
-Requires Python 3.12 or newer.
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e ".[dev]"
-pytest
-```
-
-The scheduler currently uses a bounded thread pool for local callable tasks. This is suitable for proving I/O-friendly concurrency; CPU-heavy workloads need a separately bounded process adapter and platform-specific validation.
-
-## Test status
-
-Tests are committed as a suite but have not been executed by this GitHub connector. Do not treat committed tests as passing until CI or a real Python environment reports the result.
+Tests are committed but have not yet been confirmed passing in CI. The GitHub Actions sub-bot workflow is committed; do not treat it as operational until a successful run produces the report artifact.
