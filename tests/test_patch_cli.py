@@ -47,12 +47,13 @@ def test_cli_requires_explicit_approval_and_applies(tmp_path, capsys):
         "--workspace", str(workspace), "--proposal", str(proposal_file), "--approve"
     ]) == 0
     assert (workspace / "hello.txt").read_text(encoding="utf-8") == "new"
-    assert "APPLIED: 1 file(s)" in capsys.readouterr().out
+    captured = capsys.readouterr().out
+    assert "APPLIED: 1 file(s)" in captured
     audit_path = workspace / ".blue-ant" / "patch-audit.jsonl"
     verification = AuditLog(audit_path).verify()
     assert verification.valid is True
     assert verification.records == 2
-    assert "AUDIT VERIFIED: 2 record(s)" in capsys.readouterr().out
+    assert "AUDIT VERIFIED: 2 record(s)" in captured
 
 
 def test_load_proposal_rejects_unknown_fields(tmp_path):
