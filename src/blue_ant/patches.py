@@ -95,17 +95,6 @@ def _atomic_write(target: Path, content: str, mode: int) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_name, target)
-        if audit is not None:
-            audit.record(
-                "patch_apply_succeeded",
-                proposal_id=proposal.proposal_id,
-                project_id=proposal.project_id,
-                task_id=proposal.task_id,
-                changed_paths=[target.relative_to(root).as_posix() for target, _, _, _ in prepared],
-            )
-            verification = audit.verify()
-            if not verification.valid:
-                raise RuntimeError(f"patch audit log failed verification: {verification.error}")
     except Exception:
         try:
             os.close(fd)
@@ -221,7 +210,18 @@ def apply_patch_proposal(
                 raise ValueError(f"symlinked parent directory is not allowed: {target}")
             _atomic_write(target, new_content, mode)
             written.append((target, previous, mode))
-    except Exception:
+        if audit is not None:
+            audit.record(
+                "patch_apply_succeeded",
+                proposal_id=proposal.proposal_id,
+                project_id=proposal.project_id,
+                task_id=proposal.task_id,
+                changed_paths=[target.relative_to(root).as_posix() for target, _, _, _ in prepared],
+            )
+            verification = audit.verify()
+            if not verification.valid:
+                raise RuntimeError(f"patch audit log failed verification: {verification.error}")
+    except Exception as exc:
         for target, previous, mode in reversed(written):
             try:
                 if previous is None:
@@ -230,6 +230,18 @@ def apply_patch_proposal(
                     _atomic_write(target, previous, mode)
             except OSError:
                 # Preserve the original exception; caller must inspect workspace.
+                pass
+        if audit is not None:
+            try:
+                audit.record(
+                    "patch_apply_failed",
+                    proposal_id=proposal.proposal_id,
+                    project_id=proposal.project_id,
+                    task_id=proposal.task_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+            except Exception:
                 pass
         raise
 
