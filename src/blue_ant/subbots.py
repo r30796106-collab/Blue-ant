@@ -65,16 +65,18 @@ class SubBotFactory:
             raise ValueError("requested fleet exceeds configured max_bots")
         if len(set(selected)) != len(selected):
             raise ValueError("duplicate sub-bot roles are not allowed")
-        return tuple(
-            SubBot(bot_id=f"blue-ant-{role.value}", role=role)
-            for role in selected
-        )
+        return tuple(SubBot(bot_id=f"blue-ant-{role.value}", role=role) for role in selected)
 
 
 def run_fleet(root: str | Path, bots: Iterable[SubBot]) -> list[Finding]:
-    """Run the bounded read-only worker set and return stable, sorted findings."""
+    """Run at most sixteen read-only workers and return stable, sorted findings."""
+    fleet = tuple(bots)
+    if not fleet:
+        raise ValueError("at least one sub-bot is required")
+    if len(fleet) > 16:
+        raise ValueError("fleet exceeds hard maximum of 16 sub-bots")
     findings: list[Finding] = []
-    for bot in bots:
+    for bot in fleet:
         findings.extend(bot.run(root))
     return sorted(findings, key=lambda item: (item.path, item.bot_id, item.message))
 
@@ -82,13 +84,15 @@ def run_fleet(root: str | Path, bots: Iterable[SubBot]) -> list[Finding]:
 def _iter_text_files(root: Path):
     ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or any(part in ignored for part in path.relative_to(root).parts):
+        if not path.is_file() or path.is_symlink() or any(part in ignored for part in path.relative_to(root).parts):
             continue
         try:
-            if path.stat().st_size > 1_000_000:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(root)
+            if resolved.stat().st_size > 1_000_000:
                 continue
-            content = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
+            content = resolved.read_text(encoding="utf-8")
+        except (OSError, UnicodeError, ValueError):
             continue
         yield path.relative_to(root).as_posix(), content
 
