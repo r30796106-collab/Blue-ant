@@ -189,7 +189,15 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PROJECT_ID: ${{ needs.validate-bundle.outputs.project }}
         run: |
-            echo "$EXISTING_PRS"
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          ## Blue Ant approved task: $TASK_ID
+
+          - Project: $PROJECT_ID
+          - Source issue: #$ISSUE_NUMBER
+          - Branch: $BRANCH
+
+          This PR was created only after explicit owner approval. It is not merged automatically.
+          EOF
           gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" --title "Blue Ant: $TASK_ID" --body-file "$RUNNER_TEMP/pr-body.md"
 
       - name: Dispatch independent review and target tests
