@@ -202,3 +202,29 @@ Open **Actions → Blue Ant Instruction Worker → Run workflow** and provide:
 Allowed roles: `repo_analyst`, `test_auditor`, `docs_auditor`, and `safety_auditor`. Results are published as `blue-ant-result-<instruction_id>` artifacts. A controller can review those results and submit the next instruction in a subsequent run.
 
 V1 boundary: task text is context metadata, not executable code. Specialists perform only fixed read-only audit routines. This workflow does not edit target repositories, run their test suites, create branches/PRs, or call ChatGPT automatically. The controller reviews the artifact and decides the next step. Public repositories only by default.
+
+
+## Human-gated GitHub patch worker (V1)
+
+The **Blue Ant Approved Patch Worker** workflow accepts a strict JSON
+`PatchProposal`, checks out the selected public repository into a disposable
+GitHub Actions workspace, and runs the existing hash-checked patch engine.
+
+1. Run **Actions → Blue Ant Approved Patch Worker → Run workflow**.
+2. Supply the public repository, target ref, project ID, and complete patch JSON.
+3. Keep `apply_approved=false` to validate and dry-run the proposal.
+4. Set `apply_approved=true` only after reviewing the proposal and explicitly
+   approving its application.
+5. Download the resulting artifact to inspect the proposal, status, and diff.
+
+The worker validates the proposal schema, project ID, change count, content
+size, and expected SHA-256 values. The patch engine rejects traversal paths,
+reserved paths, symlinks, duplicate paths, stale hashes, and implicit
+overwrites. It supports file creation/replacement only.
+
+**Important V1 boundary:** applying a patch changes only the disposable
+workflow checkout. The workflow has read-only GitHub permissions, does not
+push commits or open PRs, and does not execute target code or tests. A human
+must review the artifact and decide whether to apply the resulting changes
+through a separate approved GitHub operation. This is a controlled patch
+executor, not yet an autonomous code-generating agent.
