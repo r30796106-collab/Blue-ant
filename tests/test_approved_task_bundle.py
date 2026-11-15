@@ -100,3 +100,67 @@ def test_cli_stages_bundle(tmp_path):
     assert main(["--input", str(source), "--output-dir", str(output)]) == 0
     assert (output / "metadata.json").is_file()
     assert (output / "worker_one" / "proposal.json").is_file()
+
+
+
+def test_rejects_symlinked_output_root(tmp_path):
+    real_root = tmp_path / "real-output"
+    real_root.mkdir()
+    linked_root = tmp_path / "linked-output"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="output directory"):
+        stage_bundle(make_bundle(), linked_root)
+    assert list(real_root.iterdir()) == []
+
+
+def test_rejects_symlinked_task_directory_before_writing(tmp_path):
+    root = tmp_path / "staged"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "worker_one").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="task directory"):
+        stage_bundle(make_bundle(), root)
+    assert list(outside.iterdir()) == []
+    assert not (root / "worker_two").exists()
+
+
+def test_rejects_symlinked_proposal_file_without_following_it(tmp_path):
+    root = tmp_path / "staged"
+    task_dir = root / "worker_one"
+    task_dir.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text("do not overwrite", encoding="utf-8")
+    (task_dir / "proposal.json").symlink_to(outside)
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        stage_bundle(make_bundle(), root)
+    assert outside.read_text(encoding="utf-8") == "do not overwrite"
+    assert not (root / "worker_two").exists()
+
+
+def test_refuses_to_overwrite_existing_staged_metadata(tmp_path):
+    root = tmp_path / "staged"
+    root.mkdir()
+    metadata = root / "metadata.json"
+    metadata.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        stage_bundle(make_bundle(), root)
+    assert metadata.read_text(encoding="utf-8") == "preserve"
+    assert not (root / "worker_one").exists()
+
+
+def test_refuses_to_overwrite_existing_proposal(tmp_path):
+    root = tmp_path / "staged"
+    task_dir = root / "worker_one"
+    task_dir.mkdir(parents=True)
+    proposal_path = task_dir / "proposal.json"
+    proposal_path.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        stage_bundle(make_bundle(), root)
+    assert proposal_path.read_text(encoding="utf-8") == "preserve"
+    assert not (root / "worker_two").exists()
