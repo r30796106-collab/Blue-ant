@@ -31,7 +31,8 @@ jobs:
           if not isinstance(repository, str) or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]+", repository):
               raise SystemExit("Only public repositories owned by r30796106-collab are allowed")
           ref = instruction["ref"]
-          if not isinstance(ref, str) or not ref or len(ref) > 200 or ref.startswith("-") or ".." in ref or any(c in ref for c in " ~^:?*[\\\\"):
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
               raise SystemExit("Invalid target ref")
           if instruction["worker_role"] not in {"repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"}:
               raise SystemExit("Worker role is not in the approved allowlist")
