@@ -109,7 +109,9 @@ def generate_development_plan(
             if severity not in _ALLOWED_SEVERITIES:
                 raise ValueError("finding has an unsupported severity")
             path = finding.get("path", "")
-            if not isinstance(path, str) or len(path) > 300 or path.startswith("/") or "\\\\" in path or ".." in path.split("/") or any(part in {"", "."} for part in path.split("/")):
+            if (not isinstance(path, str) or len(path) > 300 or path.startswith("/")
+                or chr(92) in path or ".." in path.split("/")
+                or (path != "." and any(part in {"", "."} for part in path.split("/")))):
                 raise ValueError("finding path is invalid")
             message = _text(finding.get("message"), "finding.message")
             if severity == "info":
