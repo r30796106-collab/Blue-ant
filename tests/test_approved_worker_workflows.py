@@ -45,3 +45,31 @@ def test_patch_workflows_match_the_patch_engine_ten_file_limit():
         assert "len(changes) > 10" in workflow
         assert "Proposal must contain 1–10 changes" in workflow
         assert "len(changes) > 50" not in workflow
+
+
+AUDIT_ARTIFACT_WORKFLOWS = {
+    ".github/workflows/issue-approved-pr.yml": "target/.blue-ant/patch-audit.jsonl",
+    ".github/workflows/plan-linked-approved-pr.yml": "target/.blue-ant/patch-audit.jsonl",
+}
+
+
+def test_approved_pr_workers_retain_patch_audit_artifacts():
+    for relative_path, audit_path in AUDIT_ARTIFACT_WORKFLOWS.items():
+        workflow = (ROOT / relative_path).read_text(encoding="utf-8")
+        upload = workflow.index("Upload approved")
+        commit = workflow.index("Create branch and commit")
+        assert upload < commit
+        assert "if: always()" in workflow[upload:commit]
+        assert "actions/upload-artifact@v4" in workflow[upload:commit]
+        assert audit_path in workflow[upload:commit]
+        assert "retention-days: 14" in workflow[upload:commit]
+
+
+def test_disposable_patch_worker_copies_audit_log_into_its_result_artifact():
+    workflow = (ROOT / ".github/workflows/issue-approved-patch.yml").read_text(encoding="utf-8")
+    retain = workflow.index("Retain patch audit trail")
+    upload = workflow.index("Upload patch result")
+    assert retain < upload
+    assert "if: always()" in workflow[retain:upload]
+    assert "workspace/.blue-ant/patch-audit.jsonl" in workflow[retain:upload]
+    assert "artifacts/patch-audit.jsonl" in workflow[retain:upload]
