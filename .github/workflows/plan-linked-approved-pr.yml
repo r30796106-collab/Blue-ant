@@ -1,0 +1,208 @@
+name: Blue Ant Plan-Linked Approved Coding Worker
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+jobs:
+  plan-linked-proposal:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-plan-pr]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate plan, selected task, and explicit approval
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          BLUE_ANT_WORKER_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          data = json.loads(os.environ.get("ISSUE_BODY") or "")
+          required = {"target_repository", "target_ref", "project_id", "plan", "task_id", "change", "apply_approved"}
+          if not isinstance(data, dict) or set(data) != required:
+              raise SystemExit("Issue body must contain exactly: " + ", ".join(sorted(required)))
+          repo = data["target_repository"]
+          if not isinstance(repo, str) or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", repo):
+              raise SystemExit("target_repository must be a public repository under r30796106-collab")
+          if repo != os.environ["GITHUB_REPOSITORY"] and not os.environ.get("BLUE_ANT_WORKER_TOKEN"):
+              raise SystemExit("Cross-repository writes require BLUE_ANT_WORKER_TOKEN")
+          ref = data["target_ref"]
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target_ref")
+          project = data["project_id"]
+          if not isinstance(project, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", project):
+              raise SystemExit("Invalid project_id")
+          if data["apply_approved"] is not True:
+              raise SystemExit("Refusing write: apply_approved must be true after human review")
+          plan = data["plan"]
+          if not isinstance(plan, dict) or plan.get("schema_version") != 1:
+              raise SystemExit("A schema_version 1 development plan is required")
+          if plan.get("approval_required") is not True or plan.get("apply_approved") is not False:
+              raise SystemExit("Plan must remain unapproved and require human review")
+          if plan.get("project_id") != project:
+              raise SystemExit("Plan project_id does not match issue project_id")
+          if plan.get("target_repository") != repo or plan.get("target_ref") != ref:
+              raise SystemExit("Plan target repository/ref must exactly match issue target")
+          task_id = data["task_id"]
+          if not isinstance(task_id, str) or not task_id.strip():
+              raise SystemExit("task_id is required")
+          tasks = plan.get("tasks")
+          if not isinstance(tasks, list):
+              raise SystemExit("Plan tasks must be an array")
+          matches = [t for t in tasks if isinstance(t, dict) and t.get("task_id") == task_id]
+          if len(matches) != 1:
+              raise SystemExit("task_id must identify exactly one plan task")
+          task = matches[0]
+          if task.get("requires_human_review") is not True:
+              raise SystemExit("Selected plan task must require human review")
+          if task.get("kind") != "audit_finding_review" or task.get("role") == "safety_auditor":
+              raise SystemExit("Selected task kind/role is not eligible for patching")
+          change = data["change"]
+          if not isinstance(change, dict) or set(change) != {"path", "content"}:
+              raise SystemExit("change must contain exactly path and content")
+          if not isinstance(change.get("path"), str) or change["path"] != task.get("path"):
+              raise SystemExit("change.path must exactly match the selected plan task path")
+          if not isinstance(change.get("content"), str):
+              raise SystemExit("change.content must be text")
+          if len(change["content"].encode("utf-8")) > 2_000_000:
+              raise SystemExit("Change content exceeds 2 MB")
+          root = os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction")
+          os.makedirs(root, exist_ok=True)
+          for name, value in (("plan.json", plan), ("change.json", change),
+                              ("metadata.json", {"target_repository": repo, "target_ref": ref, "project_id": project, "task_id": task_id})):
+              with open(os.path.join(root, name), "w", encoding="utf-8") as f:
+                  json.dump(value, f, ensure_ascii=False)
+          PY
+
+      - name: Read validated metadata
+        id: instruction
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          root = os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction")
+          data = json.load(open(os.path.join(root, "metadata.json"), encoding="utf-8"))
+          for key in ("target_repository", "target_ref", "project_id", "task_id"):
+              print(key + "=" + data[key])
+          PY
+
+      - name: Checkout Blue Ant worker source
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Checkout target repository at approved ref
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.instruction.outputs.target_repository }}
+          ref: ${{ steps.instruction.outputs.target_ref }}
+          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          path: target
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant proposal and patch tools
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Build proposal from the exact plan task and apply hash-checked patch
+        env:
+          TASK_ID: ${{ steps.instruction.outputs.task_id }}
+        run: |
+          blue-ant-propose --workspace target --plan "$RUNNER_TEMP/blue-ant-instruction/plan.json" --task-id "$TASK_ID" --change "$RUNNER_TEMP/blue-ant-instruction/change.json" --output "$RUNNER_TEMP/blue-ant-instruction/proposal.json"
+          blue-ant-patch --workspace target --proposal "$RUNNER_TEMP/blue-ant-instruction/proposal.json" --approve
+          python - <<'PY'
+          import json, os
+          proposal = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "proposal.json"), encoding="utf-8"))
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "changed-paths.nul"), "wb") as f:
+              for item in proposal["changes"]:
+                  f.write(item["path"].encode("utf-8") + bytes([0]))
+          PY
+          git -C target add --all --pathspec-from-file="$RUNNER_TEMP/blue-ant-instruction/changed-paths.nul" --pathspec-file-nul
+          git -C target diff --cached --check
+          if git -C target diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 1
+          fi
+
+      - name: Create branch and commit
+        id: commit
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+        run: |
+          BRANCH="blue-ant/plan-issue-${ISSUE_NUMBER}-run-${RUN_ID}"
+          git -C target config user.name "github-actions[bot]"
+          git -C target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C target switch -c "$BRANCH"
+          git -C target commit -m "Blue Ant: approved plan task for ${PROJECT_ID}"
+          git -C target push --set-upstream origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
+          TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+          TASK_ID: ${{ steps.instruction.outputs.task_id }}
+        run: |
+          python - <<'PY'
+          import os
+          body = "\n".join([
+              "## Blue Ant plan-linked approved coding worker", "",
+              "- Project: " + os.environ["PROJECT_ID"],
+              "- Plan task: " + os.environ["TASK_ID"],
+              "- Source instruction: #" + os.environ["ISSUE_NUMBER"],
+              "- The proposal was rebuilt from the submitted plan and exact task path.",
+              "- The target file SHA-256 was calculated from the checked-out ref and checked before apply.",
+              "- Explicit human approval was required before the patch was applied.", "",
+              "Review the complete diff and CI results. This workflow never merges."
+          ]) + "\n"
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-pr-body.md"), "w", encoding="utf-8") as f:
+              f.write(body)
+          PY
+          gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" --title "Blue Ant: approved plan task $TASK_ID" --body-file "$RUNNER_TEMP/blue-ant-pr-body.md"
+
+      - name: Dispatch Blue Ant CI and target tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
+        run: |
+          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main
+          gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+
+      - name: Report result on instruction issue
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const body = [
+              '## Blue Ant plan-linked coding worker',
+              '',
+              'Workflow status: **' + (process.env.JOB_STATUS || 'unknown') + '**',
+              'The selected plan task is revalidated, proposal content is rebuilt with a fresh target-file SHA-256, and explicit human approval is required.',
+              'The worker opens a separate pull request and never merges. Inspect the Actions run and generated PR.'
+            ].join('\\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
