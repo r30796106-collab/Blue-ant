@@ -91,3 +91,20 @@ def test_policy_denies_unapproved_side_effect() -> None:
     assert not policy.check("deploy")
     assert policy.check("deploy", frozenset({"deploy"}))
     assert not policy.check("unknown_action")
+
+
+def test_approval_required_action_runs_only_with_explicit_approval() -> None:
+    task = TaskSpec("write", lambda: "written", action="write_files")
+
+    with pytest.raises(PermissionError, match="write_files"):
+        Scheduler().run([task])
+
+    result = Scheduler().run([task], approved_actions=frozenset({"write_files"}))
+    assert result["write"].status == TaskStatus.SUCCEEDED
+    assert result["write"].value == "written"
+
+
+def test_approval_does_not_authorize_unknown_action() -> None:
+    task = TaskSpec("unknown", lambda: None, action="arbitrary_shell")
+    with pytest.raises(PermissionError, match="arbitrary_shell"):
+        Scheduler().run([task], approved_actions=frozenset({"arbitrary_shell"}))
