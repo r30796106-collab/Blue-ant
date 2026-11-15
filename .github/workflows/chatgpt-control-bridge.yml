@@ -1,0 +1,139 @@
+name: Blue Ant ChatGPT Control Bridge V1
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  bridge-command:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-bridge]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Blue Ant bridge
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant
+        run: python -m pip install -e blue-ant
+
+      - name: Validate bridge command
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          mkdir -p instruction artifacts
+          printf '%s' "$ISSUE_BODY" > instruction/raw-command.json
+          blue-ant-bridge --input instruction/raw-command.json --output instruction/command.json
+
+      - name: Read validated command metadata
+        id: command
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          command = json.load(open("instruction/command.json", encoding="utf-8"))
+          for key in ("command_id", "project_id", "repository", "ref", "task"):
+              print(f"{key}={command[key]}")
+          print("roles=" + ",".join(command["roles"]))
+          print("max_cycles=" + str(command["max_cycles"]))
+          PY
+
+      - name: Checkout target repository read-only
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.command.outputs.repository }}
+          ref: ${{ steps.command.outputs.ref }}
+          path: target
+          persist-credentials: false
+
+      - name: Run bounded read-only audit loop
+        env:
+          PROJECT_ID: ${{ steps.command.outputs.project_id }}
+          ROLES: ${{ steps.command.outputs.roles }}
+          MAX_CYCLES: ${{ steps.command.outputs.max_cycles }}
+          TASK_CONTEXT: ${{ steps.command.outputs.task }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        run: |
+          blue-ant-audit-loop \
+            --project "$PROJECT_ID=target" \
+            --roles "$ROLES" \
+            --max-cycles "$MAX_CYCLES" \
+            --task "$TASK_CONTEXT" \
+            --output "artifacts/$COMMAND_ID-audit.json"
+
+      - name: Generate deterministic development plan
+        env:
+          PROJECT_ID: ${{ steps.command.outputs.project_id }}
+          TARGET_REPOSITORY: ${{ steps.command.outputs.repository }}
+          TARGET_REF: ${{ steps.command.outputs.ref }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        run: |
+          blue-ant-plan \
+            --project-id "$PROJECT_ID" \
+            --audit-report "artifacts/$COMMAND_ID-audit.json" \
+            --target-repository "$TARGET_REPOSITORY" \
+            --target-ref "$TARGET_REF" \
+            --output "artifacts/$COMMAND_ID-plan.json"
+
+      - name: Upload bridge result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-bridge-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Return result to command issue
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+          PROJECT_ID: ${{ steps.command.outputs.project_id }}
+          TARGET_REPOSITORY: ${{ steps.command.outputs.repository }}
+          TARGET_REF: ${{ steps.command.outputs.ref }}
+          AUDIT_PATH: artifacts/${{ steps.command.outputs.command_id }}-audit.json
+          PLAN_PATH: artifacts/${{ steps.command.outputs.command_id }}-plan.json
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require('fs');
+            let audit = null, plan = null;
+            try { audit = JSON.parse(fs.readFileSync(process.env.AUDIT_PATH, 'utf8')); } catch (_) {}
+            try { plan = JSON.parse(fs.readFileSync(process.env.PLAN_PATH, 'utf8')); } catch (_) {}
+            const tasks = plan?.tasks || [];
+            const body = [
+              '## Blue Ant ChatGPT bridge result',
+              '',
+              '- Status: **' + (process.env.JOB_STATUS || 'unknown') + '**',
+              '- Command: ' + (process.env.COMMAND_ID || 'validation failed'),
+              '- Target: ' + (process.env.TARGET_REPOSITORY || 'not resolved') + '@' + (process.env.TARGET_REF || 'not resolved'),
+              '- Audit cycles: ' + (audit?.cycles_used ?? 0),
+              '- Plan tasks: ' + tasks.length,
+              '',
+              '### Review queue',
+              '',
+              ...(tasks.length ? tasks.slice(0, 30).map(t => '- **' + String(t.priority).toUpperCase() + '** ' + t.task_id + ' — ' + t.kind + (t.path ? ' — ' + t.path : '') + ': ' + t.evidence) : ['No plan tasks were produced.']),
+              '',
+              '### Handoff',
+              '',
+              'The controller can read this result and issue a new [blue-ant-bridge] command. This workflow is a bounded, read-only audit-and-plan adapter. It does not generate or apply code, run target tests, install target dependencies, merge PRs, or deploy.',
+              '',
+              'Full JSON reports are in the workflow artifact.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body.slice(0, 60000)
+            });
