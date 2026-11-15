@@ -55,7 +55,7 @@ def sha256_text(content: str) -> str:
 
 
 def _safe_relative_path(raw: str) -> PurePosixPath:
-    if not isinstance(raw, str) or not raw or "\\x00" in raw or "\\\\" in raw:
+    if not isinstance(raw, str) or not raw or "\x00" in raw or "\\" in raw:
         raise ValueError("patch path must be a non-empty POSIX relative path")
     path = PurePosixPath(raw)
     if not path.parts or path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
