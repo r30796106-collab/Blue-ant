@@ -16,7 +16,7 @@ dependencies = []
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-blue-ant-review = "blue_ant.subbot_report:main"
+blue-ant-review = "blue_ant.subbot_report:main"\nblue-ant-workforce = "blue_ant.workforce_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
