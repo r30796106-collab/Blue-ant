@@ -32,7 +32,19 @@ elon_workspace = registry.workspace_for("elon", create=True)
 trading_workspace = registry.workspace_for("trading", create=True)
 ```
 
-The registry validates project IDs, rejects duplicate registrations and symlink source roots, and assigns one workspace directory per registered project. Workspace creation is opt-in, does not copy or modify source files, and rejects symlinked workspace directories. The current registry is in-memory; persistent configuration and actual worker execution isolation are later milestones. Separate directories alone are not an OS security sandbox.
+The registry validates project IDs, rejects duplicate registrations and symlink source roots, and assigns one workspace directory per registered project. Workspace creation is opt-in, does not copy or modify source files, and rejects symlinked workspace directories. Separate directories alone are not an OS security sandbox.
+
+By default, the registry remains in memory. To persist registrations across process restarts, provide an explicit JSON registry path:
+
+```python
+registry = ProjectRegistry(
+    ".blue-ant/workspaces",
+    registry_path=".blue-ant/projects.json",
+)
+registry.register("elon", "/path/to/ELON")
+```
+
+The versioned registry is written atomically with owner-only file permissions. On startup, stored project IDs and source directories are revalidated; missing, invalid, or symlinked registry/source paths are rejected. The file stores machine-local absolute source paths, so keep it local and do not commit it or share it between machines.
 
 ### Run locally
 
