@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from blue_ant.projects import ProjectRegistry
+from blue_ant.resources import ResourcePolicy, ResourceSnapshot
 from blue_ant.subbots import SubBotRole
 from blue_ant.workforce import WorkAssignment, Workforce
 
@@ -135,3 +136,32 @@ def test_snapshot_mode_refuses_to_overwrite_existing_task_workspace(tmp_path: Pa
         workforce.run([assignment])
 
     assert marker.read_text(encoding="utf-8") == "preserve"
+
+
+
+def test_resource_policy_caps_effective_workforce_concurrency(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    workforce = Workforce(
+        registry,
+        max_workers=8,
+        resource_policy=ResourcePolicy(
+            max_workers=8,
+            reserve_memory_bytes=512,
+            memory_per_worker_bytes=256,
+        ),
+        resource_snapshot=ResourceSnapshot(cpu_count=3, available_memory_bytes=1_024),
+    )
+
+    assert workforce.requested_max_workers == 8
+    assert workforce.max_workers == 2
+
+
+def test_resource_policy_and_snapshot_must_be_provided_together(tmp_path: Path):
+    with pytest.raises(ValueError, match="provided together"):
+        Workforce(
+            ProjectRegistry(tmp_path / "workspaces"),
+            resource_snapshot=ResourceSnapshot(cpu_count=2, available_memory_bytes=1_024),
+        )
