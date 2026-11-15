@@ -49,6 +49,7 @@ def test_cli_requires_explicit_approval_and_applies(tmp_path, capsys):
     assert (workspace / "hello.txt").read_text(encoding="utf-8") == "new"
     captured = capsys.readouterr().out
     assert "APPLIED: 1 file(s)" in captured
+    assert captured.count("APPLIED: 1 file(s)") == 1
     audit_path = workspace / ".blue-ant" / "patch-audit.jsonl"
     verification = AuditLog(audit_path).verify()
     assert verification.valid is True
