@@ -168,7 +168,7 @@ class Workforce:
             except Exception as exc:
                 self._record(
                     "worker_failed", task_id=job.task_id, project_id=job.project_id,
-                    role=job.role.value, error=f"{type(exc).__name__}: {exc}",
+                    role=job.role.value, error_type=type(exc).__name__,
                 )
                 return WorkResult(
                     job.task_id, job.project_id, job.role.value, source_root, workspace, (),

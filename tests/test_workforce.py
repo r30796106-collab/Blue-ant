@@ -211,3 +211,28 @@ def test_workforce_refuses_to_run_with_tampered_audit_log(tmp_path: Path):
         workforce.run([WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR)])
 
     assert not (tmp_path / "workspaces" / "repo").exists()
+
+
+def test_workforce_audit_redacts_worker_exception_message(tmp_path: Path, monkeypatch):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    audit_path = tmp_path / "audit.jsonl"
+
+    from blue_ant.subbots import SubBot
+    def fail_with_sensitive_message(self, root):
+        raise RuntimeError("credential=do-not-store-this")
+
+    monkeypatch.setattr(SubBot, "run", fail_with_sensitive_message)
+    results = Workforce(registry, audit_path=audit_path).run([
+        WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
+    ])
+
+    assert results[0].error == "RuntimeError: credential=do-not-store-this"
+    audit_text = audit_path.read_text(encoding="utf-8")
+    assert "credential=do-not-store-this" not in audit_text
+    records = [json.loads(line) for line in audit_text.splitlines()]
+    failure = next(record for record in records if record["event"] == "worker_failed")
+    assert failure["error_type"] == "RuntimeError"
+    assert "error" not in failure
+    assert AuditLog(audit_path).verify().valid is True
