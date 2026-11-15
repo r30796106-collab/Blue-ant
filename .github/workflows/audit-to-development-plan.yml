@@ -184,7 +184,7 @@ jobs:
               '',
               '### Next handoff',
               '',
-              'For a suitable audit_finding_review task, independently verify the finding and prepare the complete replacement content for exactly the listed existing file. Then submit the plan, selected task ID, exact file path/content, and explicit human approval to the separate [blue-ant-plan-pr] worker. That worker recalculates the file SHA-256 and opens a PR; it never merges.',
+              'For a suitable audit_finding_review task, independently verify the finding and review the prepared replacement content in the generated task issue. Ambiguous repairs remain blank for manual preparation; only the narrow deterministic Markdown rules are drafted. The task issue still requires an owner edit with apply_approved=true. That worker recalculates the file SHA-256 and opens a PR; it never merges.',
               '',
               'Safety-auditor and security_human_review tasks are never routed to automatic patch application.',
               fullPlan,
@@ -208,7 +208,8 @@ jobs:
                 const preparationNote = draftContent
                   ? 'Blue Ant prepared a deterministic draft using strategy: ' + prepared.strategy + '. Review every line before approval.'
                   : 'Blue Ant could not safely prepare this change automatically. Write the complete replacement content yourself after verifying the finding.';
-                const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan, task_id: task.task_id, replacement_content: draftContent, apply_approved: false };
+                const taskPlan = { schema_version: plan.schema_version, plan_id: plan.plan_id, project_id: plan.project_id, target_repository: plan.target_repository, target_ref: plan.target_ref, tasks: [task], approval_required: true, apply_approved: false };
+                const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan: taskPlan, task_id: task.task_id, replacement_content: draftContent, apply_approved: false };
                 const taskBody = [
                   '## Blue Ant draft coding task', '',
                   '- Source audit instruction: #' + context.issue.number,
