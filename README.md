@@ -350,8 +350,3 @@ coding-task issue, but `apply_approved` remains `false`. A human must verify
 the finding, review or replace the complete content, and explicitly approve by
 editing the issue as the repository owner. The existing worker then recalculates
 the target file hash and opens a PR; it never merges or deploys.
-
-
-<!-- isolated deterministic preparation smoke fixture -->
-```python
-print('safe smoke fixture')
