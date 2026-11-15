@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
         proposal = build_patch_proposal(args.workspace, plan, args.task_id, [change])
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(proposal_to_dict(proposal), indent=2) + "\\n", encoding="utf-8")
+        output.write_text(json.dumps(proposal_to_dict(proposal), indent=2) + "\n", encoding="utf-8")
         print(f"PROPOSAL ONLY: {proposal.proposal_id}")
         print(f"Task: {proposal.task_id}; file: {proposal.changes[0].path}")
         print("Not applied. Human review and explicit approval are still required.")
