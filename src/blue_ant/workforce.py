@@ -41,9 +41,12 @@ class Workforce:
     """Run specialist tasks concurrently with separate task workspaces.
 
     By default, read-only specialists inspect the registered source directly.
-    Set snapshot_sources=True to inspect a bounded private copy in each task
-    workspace. Snapshots exclude common generated directories and credential
-    files, reject symlinks, and never modify the registered source.
+    Set snapshot_sources=True to inspect bounded private copies. By default,
+    each task gets its own snapshot; shared_snapshot_sources=True creates one
+    project snapshot for reuse by the fixed read-only specialists while
+    retaining separate task workspace directories. Snapshots exclude common
+    generated directories and credential files, reject symlinks, and never
+    modify the registered source.
     """
 
     def __init__(
@@ -103,6 +106,7 @@ class Workforce:
             assignments=len(jobs),
             max_workers=self.max_workers,
             snapshot_sources=self.snapshot_sources,
+            shared_snapshot_sources=self.shared_snapshot_sources,
         )
         ids: set[str] = set()
         shared_scan_roots: dict[str, Path] = {}
@@ -171,6 +175,11 @@ class Workforce:
                 snapshot_bytes=snapshot_result.bytes_copied if snapshot_result else None,
                 snapshot_reused=snapshot_reused,
                 snapshot_mode=("shared_project" if self.shared_snapshot_sources else "per_task") if self.snapshot_sources else "source_reference",
+                snapshot_root=(
+                    str(shared_scan_roots[job.project_id])
+                    if self.snapshot_sources and self.shared_snapshot_sources
+                    else str(task_workspace) if self.snapshot_sources else None
+                ),
             )
             prepared.append((job, project.source_root, task_workspace, scan_root))
 
