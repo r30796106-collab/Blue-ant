@@ -122,7 +122,9 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="blue-ant/multi-${ISSUE_NUMBER}-${TASK_ID}"
-          EXISTING_PRS="$(gh api --paginate "repos/$TARGET_REPOSITORY/pulls?state=all&head=r30796106-collab:$BRANCH" --jq '.[] | {number, state, url: .html_url}')"
+          # Enumerate all PR states, then match the exact source repository and branch.
+          # The REST head filter can omit closed cross-repository PRs in some cases.
+          EXISTING_PRS="$(gh api --paginate "repos/$TARGET_REPOSITORY/pulls?state=all&per_page=100" | jq -c --arg owner "r30796106-collab" --arg branch "$BRANCH" '.[] | select(.head.ref == $branch and .head.repo.full_name == ($owner + "/" + .head.repo.name)) | {number, state, url: .html_url}')"
           if [ -n "$EXISTING_PRS" ]; then
             echo "::error::This issue/task already has a pull request (including closed PRs):"
             echo "$EXISTING_PRS"
