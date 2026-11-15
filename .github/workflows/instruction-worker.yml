@@ -1,0 +1,110 @@
+name: Blue Ant Instruction Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      instructions_json:
+        description: 'JSON array of bounded worker instructions (public repositories only)'
+        required: true
+        type: string
+        default: '[{"instruction_id":"inspect-001","project_id":"blue-ant","repository":"r30796106-collab/Blue-ant","ref":"main","worker_role":"repo_analyst","task":"Inventory the repository and report findings"}]'
+
+permissions:
+  contents: read
+
+jobs:
+  execute-instruction:
+    name: Worker / ${{ matrix.instruction.instruction_id }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        instruction: ${{ fromJSON(inputs.instructions_json) }}
+    steps:
+      - name: Validate instruction
+        env:
+          INSTRUCTION_ID: ${{ matrix.instruction.instruction_id }}
+          PROJECT_ID: ${{ matrix.instruction.project_id }}
+          TARGET_REPOSITORY: ${{ matrix.instruction.repository }}
+          WORKER_ROLE: ${{ matrix.instruction.worker_role }}
+          TASK_TEXT: ${{ matrix.instruction.task }}
+        run: |
+          python - <<'PY'
+          import os, re
+          if not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", os.environ["INSTRUCTION_ID"]):
+              raise SystemExit("Invalid instruction_id")
+          if not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", os.environ["PROJECT_ID"]):
+              raise SystemExit("Invalid project_id")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", os.environ["TARGET_REPOSITORY"]):
+              raise SystemExit("Invalid public repository coordinate")
+          if os.environ["WORKER_ROLE"] not in {
+              "repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"
+          }:
+              raise SystemExit("Worker role is not in the approved built-in allowlist")
+          task = os.environ["TASK_TEXT"]
+          if not task.strip() or len(task) > 1000:
+              raise SystemExit("Task text must contain 1–1000 characters")
+          PY
+
+      - name: Checkout Blue Ant worker
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.instruction.repository }}
+          ref: ${{ matrix.instruction.ref }}
+          path: targets/${{ matrix.instruction.project_id }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Execute approved specialist instruction
+        env:
+          INSTRUCTION_ID: ${{ matrix.instruction.instruction_id }}
+          PROJECT_ID: ${{ matrix.instruction.project_id }}
+          WORKER_ROLE: ${{ matrix.instruction.worker_role }}
+          TASK_TEXT: ${{ matrix.instruction.task }}
+        run: |
+          mkdir -p artifacts
+          blue-ant-workforce \
+            --project "$PROJECT_ID=targets/$PROJECT_ID" \
+            --roles "$WORKER_ROLE" \
+            --max-workers 1 \
+            --output "artifacts/$INSTRUCTION_ID-report.json"
+          python - <<'PY'
+          import json, os
+          payload = {
+              "schema_version": 1,
+              "instruction_id": os.environ["INSTRUCTION_ID"],
+              "project_id": os.environ["PROJECT_ID"],
+              "worker_role": os.environ["WORKER_ROLE"],
+              "task_note": os.environ["TASK_TEXT"],
+              "execution_mode": "approved_read_only_specialist",
+              "task_note_limitation": (
+                  "Task text is retained as controller context. The built-in specialist "
+                  "executes only its fixed, allowlisted audit routine; it does not interpret "
+                  "free-form instructions as code or modify the target repository."
+              ),
+          }
+          with open("artifacts/" + payload["instruction_id"] + "-instruction.json", "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, indent=2)
+              handle.write("\\n")
+          PY
+
+      - name: Publish worker result
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-result-${{ matrix.instruction.instruction_id }}
+          path: artifacts/
+          retention-days: 7
