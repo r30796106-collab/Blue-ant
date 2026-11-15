@@ -350,3 +350,44 @@ coding-task issue, but `apply_approved` remains `false`. A human must verify
 the finding, review or replace the complete content, and explicitly approve by
 editing the issue as the repository owner. The existing worker then recalculates
 the target file hash and opens a PR; it never merges or deploys.
+
+
+## ChatGPT Control Bridge V1 (GitHub issue mailbox)
+
+ChatGPT can submit a bounded command by creating an issue titled
+`[blue-ant-bridge] <short description>` in this repository. Blue Ant validates
+the exact JSON envelope, checks the owner identity, runs the selected fixed
+read-only specialists against the named public repository/ref, generates a
+deterministic review plan, uploads JSON artifacts, and posts a result comment
+to the same issue. ChatGPT can read that comment and decide whether to submit
+another command.
+
+Example issue body (raw JSON; do not wrap it in Markdown fences):
+
+```json
+{
+  "schema_version": 1,
+  "command_id": "inspect-elon",
+  "command": "audit_plan",
+  "project_id": "elon",
+  "repository": "r30796106-collab/Elon",
+  "ref": "master",
+  "roles": ["repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"],
+  "max_cycles": 4,
+  "task": "Inspect repository health and prepare a review plan"
+}
+```
+
+Bridge V1 supports only `audit_plan`, 1–4 unique approved roles, public
+repositories owned by `r30796106-collab`, and a 16 KiB command limit. The task
+is context metadata only; it is never executed as code or shell input. The
+workflow has read-only target checkout permissions. It does not run target
+tests, generate arbitrary code, modify files, approve/apply patches, merge PRs,
+or deploy. Existing human-approved coding workflows remain separate.
+
+**Important operating boundary:** this is a GitHub issue-based command/result
+bridge, not a continuously running ChatGPT process or a direct ChatGPT API
+connection. ChatGPT must be active/connected to submit the next command and
+read the result. True unattended continuous control requires a separately
+hosted controller and explicitly configured API credentials; that is not part
+of V1.
