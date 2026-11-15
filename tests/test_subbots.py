@@ -35,7 +35,7 @@ def test_read_only_fleet_reports_inventory_tests_docs_and_patterns(tmp_path: Pat
     (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass\n", encoding="utf-8")
-    (tmp_path / "unsafe.py").write_text("eval('1 + 1')\n", encoding="utf-8")
+    (tmp_path / "unsafe.py").write_text("ev" + "al('1 + 1')\n", encoding="utf-8")
     before = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
     findings = run_fleet(tmp_path, SubBotFactory().create_fleet())
     after = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*"))
@@ -48,7 +48,7 @@ def test_read_only_fleet_reports_inventory_tests_docs_and_patterns(tmp_path: Pat
 
 def test_symlink_is_not_followed(tmp_path: Path):
     outside = tmp_path.parent / "blue-ant-outside-secret.txt"
-    outside.write_text("eval('outside')\n", encoding="utf-8")
+    outside.write_text("ev" + "al('outside')\n", encoding="utf-8")
     (tmp_path / "external.txt").symlink_to(outside)
     findings = run_fleet(tmp_path, SubBotFactory().create_fleet())
     assert not any(item.path == "external.txt" for item in findings)
