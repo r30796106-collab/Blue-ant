@@ -81,3 +81,27 @@ def test_cli_reports_resource_aware_effective_worker_limit(tmp_path: Path, monke
     assert report["effective_max_workers"] == 1
     assert report["resource_snapshot"]["cpu_count"] == 3
     assert report["resource_snapshot"]["available_memory_bytes"] == 1024 * 1024
+
+
+
+def test_cli_emits_verified_audit_log_when_requested(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample"
+    source.mkdir()
+    (source / "README.md").write_text("# Sample\\n", encoding="utf-8")
+    output = tmp_path / "report.json"
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--roles", "docs_auditor",
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--audit-log", str(audit_path),
+        "--output", str(output),
+    ])
+
+    assert main() == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["audit_log"] == str(audit_path.resolve())
+    assert report["audit_verification"]["valid"] is True
+    assert report["audit_verification"]["records"] == 5
