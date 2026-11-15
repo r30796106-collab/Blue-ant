@@ -178,9 +178,12 @@ result = apply_patch_proposal("/path/to/disposable/workspace", proposal, approve
 ```
 
 The patch engine is a guarded workspace writer, not an OS sandbox or a
-multi-file atomic transaction. Run project tests in a separately isolated CI
-runner after applying a proposal. A future GitHub adapter can turn verified
-workspace changes into branch commits and pull requests.
+globally atomic multi-file transaction. It limits proposals to 10 files, 1 MB
+per file, and 2 MB combined; preserves existing file permission bits; creates
+new files with owner-only permissions; and attempts atomic per-file rollback
+if a later replacement fails. Use a dedicated disposable workspace that is
+not concurrently modified by untrusted processes. Run project tests in a
+separately isolated CI runner after applying a proposal.
 
 
 ### Review and apply a patch proposal from the command line

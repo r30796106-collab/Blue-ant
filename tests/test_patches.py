@@ -85,3 +85,108 @@ def test_patch_rejects_duplicate_paths_and_existing_new_file(tmp_path: Path):
             proposal(FileChange("exists.txt", "replace", None)),
             approved=True,
         )
+
+
+
+def test_patch_rejects_more_than_ten_files_before_writing(tmp_path: Path):
+    changes = tuple(FileChange(f"{index}.txt", "x", None) for index in range(11))
+    with pytest.raises(ValueError, match="exceeds 10 files"):
+        apply_patch_proposal(tmp_path, PatchProposal("p", "demo", "task", changes), approved=True)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_patch_rejects_single_file_over_one_megabyte(tmp_path: Path):
+    change = FileChange("large.txt", "x" * 1_000_001, None)
+    with pytest.raises(ValueError, match="exceeds 1000000 bytes"):
+        apply_patch_proposal(tmp_path, proposal(change), approved=True)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_patch_rejects_combined_content_over_two_megabytes(tmp_path: Path):
+    changes = tuple(
+        FileChange(f"{index}.txt", "x" * 700_000, None)
+        for index in range(3)
+    )
+    with pytest.raises(ValueError, match="combined patch content"):
+        apply_patch_proposal(tmp_path, PatchProposal("p", "demo", "task", changes), approved=True)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_patch_rejects_symlink_workspace_root(tmp_path: Path):
+    real_workspace = tmp_path / "real"
+    real_workspace.mkdir()
+    linked_workspace = tmp_path / "linked"
+    linked_workspace.symlink_to(real_workspace, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="workspace root"):
+        apply_patch_proposal(
+            linked_workspace,
+            proposal(FileChange("new.txt", "content", None)),
+            approved=True,
+        )
+    assert list(real_workspace.iterdir()) == []
+
+
+def test_patch_preserves_existing_file_permissions_and_restricts_new_file(tmp_path: Path):
+    import os
+    import stat
+
+    existing = tmp_path / "script.py"
+    existing.write_text("print('old')\\n", encoding="utf-8")
+    os.chmod(existing, 0o755)
+
+    apply_patch_proposal(
+        tmp_path,
+        proposal(
+            FileChange("script.py", "print('new')\\n", sha256_text("print('old')\\n")),
+            FileChange("new.txt", "created", None),
+        ),
+        approved=True,
+    )
+
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o755
+    assert stat.S_IMODE((tmp_path / "new.txt").stat().st_mode) == 0o600
+
+
+def test_patch_rejects_malformed_expected_hash(tmp_path: Path):
+    target = tmp_path / "file.txt"
+    target.write_text("old", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        apply_patch_proposal(
+            tmp_path,
+            proposal(FileChange("file.txt", "new", "not-a-hash")),
+            approved=True,
+        )
+    assert target.read_text(encoding="utf-8") == "old"
+
+
+def test_patch_rolls_back_prior_file_when_later_replace_fails(tmp_path: Path, monkeypatch):
+    import blue_ant.patches as patch_module
+
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("first-old", encoding="utf-8")
+    second.write_text("second-old", encoding="utf-8")
+    original_replace = patch_module.os.replace
+    calls = 0
+
+    def fail_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated replacement failure")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(patch_module.os, "replace", fail_second_replace)
+    changes = proposal(
+        FileChange("first.txt", "first-new", sha256_text("first-old")),
+        FileChange("second.txt", "second-new", sha256_text("second-old")),
+    )
+
+    with pytest.raises(OSError, match="simulated"):
+        apply_patch_proposal(tmp_path, changes, approved=True)
+
+    assert first.read_text(encoding="utf-8") == "first-old"
+    assert second.read_text(encoding="utf-8") == "second-old"
+    assert not list(tmp_path.glob(".blue-ant-*"))
