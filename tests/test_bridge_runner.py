@@ -1,5 +1,6 @@
 import json
 
+from blue_ant.audit import AuditLog
 from blue_ant.bridge_runner import run_bridge_command
 
 
@@ -43,6 +44,12 @@ def test_runner_executes_all_approved_roles_and_completes_clean_review(tmp_path)
     assert result["workers_failed"] == 0
     audit = json.loads((tmp_path / "out" / "bridge-v3-test-audit.json").read_text())
     assert audit["execution_mode"] == "parallel_read_only_specialists"
+    assert audit["execution_audit"]["valid"] is True
+    event_log = tmp_path / "out" / result["artifacts"]["event_log"]
+    verification = AuditLog(event_log).verify()
+    assert verification.valid is True
+    assert verification.records == 14
+    assert event_log.stat().st_mode & 0o777 == 0o600
     assert {cycle["role"] for cycle in audit["cycles"]} == {
         "repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"
     }
