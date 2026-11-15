@@ -11,6 +11,10 @@ from .models import TaskResult, TaskSpec, TaskStatus
 from .policy import Policy
 
 
+_MAX_WORKERS = 16
+_MAX_TASKS = 256
+
+
 class Scheduler:
     """Execute independent local tasks concurrently with bounded retries.
 
@@ -23,10 +27,14 @@ class Scheduler:
         max_workers: int = 2,
         policy: Policy | None = None,
         audit_path: str | Path | None = None,
+        max_tasks: int = _MAX_TASKS,
     ) -> None:
-        if max_workers < 1:
-            raise ValueError("max_workers must be at least 1")
+        if not 1 <= max_workers <= _MAX_WORKERS:
+            raise ValueError(f"max_workers must be between 1 and {_MAX_WORKERS}")
+        if not 1 <= max_tasks <= _MAX_TASKS:
+            raise ValueError(f"max_tasks must be between 1 and {_MAX_TASKS}")
         self.max_workers = max_workers
+        self.max_tasks = max_tasks
         self.policy = policy or Policy()
         self.audit = AuditLog(audit_path) if audit_path is not None else None
 
@@ -37,6 +45,8 @@ class Scheduler:
         approved_actions: frozenset[str] = frozenset(),
     ) -> dict[str, TaskResult]:
         task_list = list(tasks)
+        if len(task_list) > self.max_tasks:
+            raise ValueError("tasks exceed configured max_tasks")
         by_id = {task.task_id: task for task in task_list}
         if len(by_id) != len(task_list):
             raise ValueError("task_id values must be unique")

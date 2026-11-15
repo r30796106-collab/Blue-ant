@@ -108,3 +108,28 @@ def test_approval_does_not_authorize_unknown_action() -> None:
     task = TaskSpec("unknown", lambda: None, action="arbitrary_shell")
     with pytest.raises(PermissionError, match="arbitrary_shell"):
         Scheduler().run([task], approved_actions=frozenset({"arbitrary_shell"}))
+
+
+
+@pytest.mark.parametrize("workers", [0, 17])
+def test_scheduler_worker_count_has_hard_bounds(workers: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 16"):
+        Scheduler(max_workers=workers)
+
+
+@pytest.mark.parametrize("max_tasks", [0, 257])
+def test_scheduler_task_capacity_has_hard_bounds(max_tasks: int) -> None:
+    with pytest.raises(ValueError, match="between 1 and 256"):
+        Scheduler(max_tasks=max_tasks)
+
+
+def test_scheduler_rejects_task_batch_above_configured_limit() -> None:
+    scheduler = Scheduler(max_tasks=1)
+    tasks = [TaskSpec("one", lambda: None), TaskSpec("two", lambda: None)]
+    with pytest.raises(ValueError, match="configured max_tasks"):
+        scheduler.run(tasks)
+
+
+def test_task_retry_count_has_hard_upper_bound() -> None:
+    with pytest.raises(ValueError, match="between 1 and 10"):
+        TaskSpec("too-many-retries", lambda: None, max_attempts=11)
