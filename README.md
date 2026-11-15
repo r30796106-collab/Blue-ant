@@ -307,3 +307,13 @@ Example issue body (all fields are required except `target_repository`):
 ```
 
 After opening the target PR, Blue Ant dispatches its own test suite and the read-only specialist review against the target repository/ref. The Blue Ant test suite verifies Blue Ant's worker code; the specialist report audits the target repository and does not execute its tests. Target-project test execution remains a separate CI capability and is not claimed by this workflow. Private repositories are not supported by this workflow.
+
+## Deterministic development-plan generator
+
+The blue-ant-plan command combines a bounded audit-loop JSON report with an optional target Python test result JSON report and emits a deterministic, human-reviewable task plan:
+
+    blue-ant-plan --project-id elon --audit-report elon-audit-loop.json --test-report elon-target-tests.json --output elon-development-plan.json
+
+The generator validates report versions, project identity, approved specialist roles, finding severity/path fields, target owner/ref, and the supported test profile. It converts findings and failed test status into bounded review tasks. A passing test report is tied to its exact target repository ref.
+
+Safety boundary: plans contain recommendations only. They never contain patch contents or executable commands; apply_approved is always false and patch_proposal is always null. A human must verify findings, prepare/review a separate hash-checked patch proposal, and explicitly approve that proposal through the existing coding worker. Safety-auditor findings are always routed to human security review rather than automatic patch generation.

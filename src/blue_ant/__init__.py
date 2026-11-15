@@ -9,6 +9,7 @@ from .workforce import WorkAssignment, Workforce, WorkResult
 from .patches import FileChange, PatchProposal, PatchResult, apply_patch_proposal, sha256_text
 from .controller import FeedbackLoop, LoopInstruction, LoopObservation, LoopReport
 from .audit_loop import AuditCycle, AuditLoopReport, BoundedAuditLoop
+from .development_plan import DevelopmentPlan, PlanTask, generate_development_plan, plan_to_dict
 
 __all__ = [
     "Scheduler", "TaskResult", "TaskSpec", "TaskStatus",
@@ -19,4 +20,5 @@ __all__ = [
     "FileChange", "PatchProposal", "PatchResult", "apply_patch_proposal", "sha256_text",
     "FeedbackLoop", "LoopInstruction", "LoopObservation", "LoopReport",
     "AuditCycle", "AuditLoopReport", "BoundedAuditLoop",
+    "DevelopmentPlan", "PlanTask", "generate_development_plan", "plan_to_dict",
 ]
