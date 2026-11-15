@@ -490,6 +490,9 @@ symlinks, and fail closed above the 5,000-file / 50 MB limits. The controller
 preserves this setting when continuing to the next pre-authorized role.
 Private bridge snapshots are stored outside the uploaded `artifacts/` directory;
 the workflow artifact contains JSON reports, not the copied project tree.
+The artifact also includes a hash-chained JSONL event log for workforce start,
+workspace preparation, worker start/result, and completion. The bridge result
+comment reports whether the chain verified and how many records it contains.
 
 **Important operating boundary:** this is a GitHub issue-based command/result
 bridge, not a continuously running ChatGPT process or a direct ChatGPT API
