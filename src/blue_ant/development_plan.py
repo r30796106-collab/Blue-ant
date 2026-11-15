@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import re
 from typing import Any
 
 
@@ -108,7 +109,7 @@ def generate_development_plan(
             if severity not in _ALLOWED_SEVERITIES:
                 raise ValueError("finding has an unsupported severity")
             path = finding.get("path", "")
-            if not isinstance(path, str) or len(path) > 300 or path.startswith("/") or "\\\\" in path or ".." in path.split("/"):
+            if not isinstance(path, str) or len(path) > 300 or path.startswith("/") or "\\\\" in path or ".." in path.split("/") or any(part in {"", "."} for part in path.split("/")):
                 raise ValueError("finding path is invalid")
             message = _text(finding.get("message"), "finding.message")
             if severity == "info":
@@ -138,6 +139,12 @@ def generate_development_plan(
             raise ValueError("test report must be a JSON object")
         target_repository = _text(test_report.get("target_repository"), "target_repository", max_length=150)
         target_ref = _text(test_report.get("target_ref"), "target_ref", max_length=200)
+        if not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", target_repository):
+            raise ValueError("target_repository is outside the configured owner scope")
+        if (not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", target_ref)
+            or target_ref.startswith("-") or ".." in target_ref or "//" in target_ref
+            or target_ref.endswith(("/", "."))):
+            raise ValueError("target_ref is invalid")
         if test_report.get("test_profile") != "python-unittest":
             raise ValueError("unsupported target test profile")
         status = test_report.get("status")
