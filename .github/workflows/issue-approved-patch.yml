@@ -103,6 +103,7 @@ jobs:
         env:
           APPLY_APPROVED: ${{ steps.instruction.outputs.apply_approved }}
         run: |
+          set -o pipefail
           mkdir -p artifacts
           if [ "$APPLY_APPROVED" = "true" ]; then
             blue-ant-patch --workspace workspace --proposal instruction/proposal.json --approve 2>&1 | tee artifacts/patch-review.txt
