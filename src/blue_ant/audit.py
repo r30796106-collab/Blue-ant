@@ -70,6 +70,8 @@ def _last_record_hash(fd: int) -> str:
     else:
         line = tail.rstrip(b"\n")
 
+    if not tail.endswith(b"\\n") or tail.endswith(b"\\n\\n"):
+        raise ValueError("audit log final record must end with exactly one newline")
     if not line or len(line) > _MAX_EVENT_BYTES:
         raise ValueError("audit log has an empty or oversized final record")
     try:
@@ -81,6 +83,14 @@ def _last_record_hash(fd: int) -> str:
     digest = record.get("record_hash")
     if not isinstance(digest, str) or not _HASH_PATTERN.fullmatch(digest):
         raise ValueError("audit log final record has no valid record_hash")
+    previous = record.get("previous_hash")
+    if not isinstance(previous, str) or not _HASH_PATTERN.fullmatch(previous):
+        raise ValueError("audit log final record has no valid previous_hash")
+    payload = dict(record)
+    payload.pop("record_hash")
+    expected = hashlib.sha256(_canonical_json(payload)).hexdigest()
+    if digest != expected:
+        raise ValueError("audit log final record hash mismatch")
     return digest
 
 
