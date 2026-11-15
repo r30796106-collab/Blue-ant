@@ -156,6 +156,14 @@ jobs:
             exit 1
           fi
 
+      - name: Upload approved plan-task patch audit trail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-plan-patch-audit-${{ github.event.issue.number }}
+          path: target/.blue-ant/patch-audit.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Create branch and commit
         id: commit
         env:
@@ -189,7 +197,8 @@ jobs:
               "- Source instruction: #" + os.environ["ISSUE_NUMBER"],
               "- The proposal was rebuilt from the submitted plan and exact task path.",
               "- The target file SHA-256 was calculated from the checked-out ref and checked before apply.",
-              "- Explicit human approval was required before the patch was applied.", "",
+              "- Explicit human approval was required before the patch was applied.",
+              "- The hash-chained patch audit log is retained as a workflow artifact for 14 days.", "",
               "Review the complete diff and CI results. This workflow never merges."
           ]) + "\n"
           with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-pr-body.md"), "w", encoding="utf-8") as f:
