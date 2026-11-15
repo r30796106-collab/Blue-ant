@@ -22,6 +22,7 @@ blue-ant-patch = "blue_ant.patch_cli:main"
 blue-ant-audit-loop = "blue_ant.audit_loop_cli:main"
 blue-ant-plan = "blue_ant.development_plan_cli:main"
 blue-ant-propose = "blue_ant.controlled_proposal_cli:main"
+blue-ant-prepare = "blue_ant.code_preparation_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
