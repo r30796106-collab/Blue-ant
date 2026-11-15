@@ -20,6 +20,12 @@ def test_audit_log_appends_valid_json_lines(tmp_path: Path):
     assert events[0]["task_id"] == "one"
     assert events[0]["attempt"] == 1
     assert events[0]["timestamp"]
+    assert events[0]["previous_hash"] == "0" * 64
+    assert events[1]["previous_hash"] == events[0]["record_hash"]
+    verification = audit.verify()
+    assert verification.valid is True
+    assert verification.records == 2
+    assert verification.last_hash == events[-1]["record_hash"]
 
 
 def test_audit_log_rejects_reserved_metadata_override(tmp_path: Path):
@@ -27,6 +33,8 @@ def test_audit_log_rejects_reserved_metadata_override(tmp_path: Path):
 
     with pytest.raises(ValueError, match="reserved fields"):
         audit.record("legitimate", timestamp="forged")
+    with pytest.raises(ValueError, match="reserved fields"):
+        audit.record("legitimate", previous_hash="forged")
 
     assert not audit.path.exists()
 
@@ -88,3 +96,64 @@ def test_audit_log_serializes_concurrent_thread_appends(tmp_path: Path):
     events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(events) == 24
     assert {event["index"] for event in events} == set(range(24))
+
+
+
+def test_audit_log_detects_tampered_record_content(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    audit = AuditLog(path)
+    audit.record("started", task_id="one")
+    audit.record("finished", task_id="one")
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    records[0]["event"] = "tampered"
+    path.write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in records), encoding="utf-8")
+
+    verification = audit.verify()
+    assert verification.valid is False
+    assert verification.records == 0
+    assert "record hash mismatch" in verification.error
+
+
+def test_audit_log_refuses_to_append_after_corrupt_final_record(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    audit = AuditLog(path)
+    audit.record("created")
+    path.write_text(path.read_text(encoding="utf-8").replace('"event": "created"', '"event": "changed"'), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="hash mismatch"):
+        audit.record("next")
+
+
+def test_audit_log_refuses_non_terminated_tail(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    audit = AuditLog(path)
+    audit.record("created")
+    path.write_text(path.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exactly one newline"):
+        audit.record("next")
+
+
+def test_audit_log_hash_chain_serializes_multiple_instances(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    writers = [AuditLog(path) for _ in range(4)]
+    threads = [
+        threading.Thread(
+            target=writers[index % len(writers)].record,
+            args=(f"event-{index}",),
+            kwargs={"index": index},
+        )
+        for index in range(40)
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    verification = AuditLog(path).verify()
+    assert verification.valid is True
+    assert verification.records == 40
+    events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert {event["index"] for event in events} == set(range(40))
