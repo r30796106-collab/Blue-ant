@@ -122,9 +122,11 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="blue-ant/multi-${ISSUE_NUMBER}-${TASK_ID}"
-          EXISTING_PR="$(gh pr list --repo "$TARGET_REPOSITORY" --state all --head "r30796106-collab:$BRANCH" --json number,state,url --jq '.[0] // empty')"
-          if [ -n "$EXISTING_PR" ]; then
-            echo "::error::This issue/task already has a pull request: $EXISTING_PR. Refusing to create a duplicate."
+          EXISTING_PRS="$(gh api --paginate "repos/$TARGET_REPOSITORY/pulls?state=all&head=r30796106-collab:$BRANCH" --jq '.[] | {number, state, url: .html_url}')"
+          if [ -n "$EXISTING_PRS" ]; then
+            echo "::error::This issue/task already has a pull request (including closed PRs):"
+            echo "$EXISTING_PRS"
+            echo "::error::Refusing to create a duplicate."
             exit 1
           fi
           EXISTING_REFS="$(gh api --paginate "repos/$TARGET_REPOSITORY/git/matching-refs/heads/$BRANCH" --jq 'length')"
@@ -187,7 +189,15 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PROJECT_ID: ${{ needs.validate-bundle.outputs.project }}
         run: |
-          printf '%s\n' "## Blue Ant approved task: $TASK_ID" "" "- Project: $PROJECT_ID" "- Source issue: #$ISSUE_NUMBER" "- Branch: $BRANCH" "" "This PR was created only after explicit owner approval. It is not merged automatically." > "$RUNNER_TEMP/pr-body.md"
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          ## Blue Ant approved task: $TASK_ID
+
+          - Project: $PROJECT_ID
+          - Source issue: #$ISSUE_NUMBER
+          - Branch: $BRANCH
+
+          This PR was created only after explicit owner approval. It is not merged automatically.
+          EOF
           gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" --title "Blue Ant: $TASK_ID" --body-file "$RUNNER_TEMP/pr-body.md"
 
       - name: Dispatch independent review and target tests
