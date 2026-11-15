@@ -61,3 +61,45 @@ def test_rejects_non_directory(tmp_path: Path):
     bot = SubBotFactory().create_fleet()[0]
     with pytest.raises(NotADirectoryError):
         bot.run(file_path)
+
+
+
+def test_docs_auditor_flags_broken_relative_links_and_unclosed_fences(tmp_path: Path):
+    (tmp_path / "README.md").write_text(
+        "# Example\n\n[Missing](docs/not-found.md)\n\n```python\nprint('unfinished')\n",
+        encoding="utf-8",
+    )
+    bot = SubBotFactory().create_fleet([SubBotRole.DOCS_AUDITOR])[0]
+    findings = bot.run(tmp_path)
+    warnings = [item for item in findings if item.severity == "warning"]
+    assert len(warnings) == 2
+    assert all(item.path == "README.md" for item in warnings)
+    assert any("missing repository file" in item.message for item in warnings)
+    assert any("unclosed fenced code block" in item.message for item in warnings)
+
+
+def test_test_auditor_flags_workflow_without_a_test_command(tmp_path: Path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.write_text("name: CI\non: [push]\njobs: {}\n", encoding="utf-8")
+    bot = SubBotFactory().create_fleet([SubBotRole.TEST_AUDITOR])[0]
+    findings = bot.run(tmp_path)
+    assert any(
+        item.severity == "warning"
+        and item.path == ".github/workflows/ci.yml"
+        and "no recognized test command" in item.message
+        for item in findings
+    )
+
+
+def test_test_auditor_accepts_recognized_unittest_workflow(tmp_path: Path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_example.py").write_text("def test_ok(): pass\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    workflow = tmp_path / ".github" / "workflows" / "ci.yml"
+    workflow.write_text("name: CI\njobs:\n  test:\n    steps:\n      - run: python -m unittest discover\n", encoding="utf-8")
+    bot = SubBotFactory().create_fleet([SubBotRole.TEST_AUDITOR])[0]
+    findings = bot.run(tmp_path)
+    assert not any(item.severity == "warning" for item in findings)
