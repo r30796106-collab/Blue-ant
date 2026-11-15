@@ -2,5 +2,6 @@
 
 from .models import TaskResult, TaskSpec, TaskStatus
 from .scheduler import Scheduler
+from .resources import ResourcePolicy, ResourceSnapshot
 
-__all__ = ["Scheduler", "TaskResult", "TaskSpec", "TaskStatus"]
+__all__ = ["Scheduler", "TaskResult", "TaskSpec", "TaskStatus", "ResourcePolicy", "ResourceSnapshot"]
