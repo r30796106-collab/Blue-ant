@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"AUDIT VERIFIED: {verification.records} record(s) -> {audit.path}")
         print(f"APPLIED: {len(result.changed_paths)} file(s)")
         return 0
-    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError, PermissionError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, json.JSONDecodeError, PermissionError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
