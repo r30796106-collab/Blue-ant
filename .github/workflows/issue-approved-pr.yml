@@ -1,0 +1,161 @@
+name: Blue Ant Issue-Driven Approved Coding Worker
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  propose-and-open-pr:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-pr]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate explicit approval and patch proposal
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          data = json.loads(os.environ.get("ISSUE_BODY") or "")
+          required = {"target_ref", "project_id", "proposal", "apply_approved"}
+          if not isinstance(data, dict) or set(data) != required:
+              raise SystemExit("Issue body must contain exactly: " + ", ".join(sorted(required)))
+          ref = data["target_ref"]
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target_ref")
+          project = data["project_id"]
+          if not isinstance(project, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", project):
+              raise SystemExit("Invalid project_id")
+          if data["apply_approved"] is not True:
+              raise SystemExit("Refusing write: apply_approved must be true after human review")
+          proposal = data["proposal"]
+          required_proposal = {"proposal_id", "project_id", "task_id", "changes"}
+          if not isinstance(proposal, dict) or set(proposal) != required_proposal:
+              raise SystemExit("Invalid proposal schema")
+          for field in ("proposal_id", "project_id", "task_id"):
+              value = proposal[field]
+              if not isinstance(value, str) or not value.strip() or len(value) > 128:
+                  raise SystemExit(f"Invalid {field}")
+          if proposal["project_id"] != project:
+              raise SystemExit("Proposal project_id must match instruction project_id")
+          changes = proposal["changes"]
+          if not isinstance(changes, list) or not changes or len(changes) > 50:
+              raise SystemExit("Proposal must contain 1–50 changes")
+          total = 0
+          seen = set()
+          for change in changes:
+              if not isinstance(change, dict) or set(change) != {"path", "content", "expected_sha256"}:
+                  raise SystemExit("Each change must contain exactly path, content, expected_sha256")
+              path, content = change["path"], change["content"]
+              if not isinstance(path, str) or not isinstance(content, str):
+                  raise SystemExit("Patch path and content must be strings")
+              if path in seen:
+                  raise SystemExit("Duplicate patch path")
+              seen.add(path)
+              total += len(content.encode("utf-8"))
+              digest = change["expected_sha256"]
+              if digest is not None and (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                  raise SystemExit("expected_sha256 must be null or a lowercase SHA-256 digest")
+          if total > 2_000_000:
+              raise SystemExit("Proposal exceeds 2 MB")
+          os.makedirs("instruction", exist_ok=True)
+          with open("instruction/proposal.json", "w", encoding="utf-8") as f:
+              json.dump(proposal, f, ensure_ascii=False)
+          with open("instruction/metadata.json", "w", encoding="utf-8") as f:
+              json.dump({"target_ref": ref, "project_id": project}, f)
+          PY
+
+      - name: Read validated metadata
+        id: instruction
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("instruction/metadata.json", encoding="utf-8"))
+          print("target_ref=" + data["target_ref"])
+          print("project_id=" + data["project_id"])
+          PY
+
+      - name: Checkout target repository at approved base ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.instruction.outputs.target_ref }}
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant patch engine
+        run: python -m pip install -e ".[dev]"
+
+      - name: Apply hash-checked approved proposal
+        run: |
+          blue-ant-patch --workspace . --proposal "$GITHUB_WORKSPACE/instruction/proposal.json" --approve
+          python - <<'PY'
+          import json
+          proposal = json.load(open("instruction/proposal.json", encoding="utf-8"))
+          with open("instruction/changed-paths.nul", "wb") as f:
+              for item in proposal["changes"]:
+                  f.write(item["path"].encode("utf-8") + b"\\0")
+          PY
+          git add --all --pathspec-from-file=instruction/changed-paths.nul --pathspec-file-nul
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 1
+          fi
+
+      - name: Create branch and commit
+        id: commit
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+        run: |
+          BRANCH="blue-ant/issue-${ISSUE_NUMBER}-run-${RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -m "Blue Ant: approved patch for ${PROJECT_ID}"
+          git push --set-upstream origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+        run: |
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$TARGET_REF" \
+            --head "$BRANCH" \
+            --title "Blue Ant: approved patch for $PROJECT_ID" \
+            --body "## Blue Ant approved coding worker\n\n- Project: `$PROJECT_ID`\n- Source instruction: #$ISSUE_NUMBER\n- Patch was applied only after `apply_approved: true`.\n- Review the complete diff and wait for required CI checks before merging.\n\nThis workflow does not merge the pull request."
+      
+      - name: Report result on instruction issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '## Blue Ant coding worker',
+              '',
+              'Workflow status: **' + (context.payload.workflow_run?.conclusion || 'completed; inspect Actions run') + '**',
+              'The worker requires explicit `apply_approved: true`, validates the patch, and opens a separate pull request. It never merges.',
+              'Inspect the Actions run and any generated pull request before proceeding.'
+            ].join('\\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
