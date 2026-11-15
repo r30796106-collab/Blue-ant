@@ -3,6 +3,7 @@
 from .models import TaskResult, TaskSpec, TaskStatus
 from .scheduler import Scheduler
 from .resources import ResourcePolicy, ResourceSnapshot
+from .audit import AuditLog, AuditVerification
 from .subbots import Finding, SubBot, SubBotFactory, SubBotRole, run_fleet
 from .projects import ProjectRegistry, ProjectSpec
 from .workforce import WorkAssignment, Workforce, WorkResult
@@ -16,6 +17,7 @@ from .workspace_snapshot import SnapshotResult, create_workspace_snapshot
 __all__ = [
     "Scheduler", "TaskResult", "TaskSpec", "TaskStatus",
     "ResourcePolicy", "ResourceSnapshot",
+    "AuditLog", "AuditVerification",
     "Finding", "SubBot", "SubBotFactory", "SubBotRole", "run_fleet",
     "ProjectRegistry", "ProjectSpec",
     "WorkAssignment", "Workforce", "WorkResult",
