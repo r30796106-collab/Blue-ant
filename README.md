@@ -527,7 +527,8 @@ Each isolated task uses the approved patch CLI's hash-chained audit log at
 `target/.blue-ant/patch-audit.jsonl`. The log is not staged or committed to
 the target repository; it is uploaded as a per-task workflow artifact for
 14 days, including failed patch attempts when the log was created. The log
-contains proposal IDs, paths, and event metadata, not patch contents.
+contains proposal IDs, paths, and event metadata, not patch contents. Artifact names use
+`blue-ant-patch-audit-<issue-number>-<task-id>`.
 
 A missing or mis-scoped token should fail before target checkout. A successful
 credential preflight does not itself prove that GitHub accepted all write
