@@ -1,20 +1,27 @@
 from pathlib import Path
 
 
-def test_subbot_review_is_success_gated_for_all_branch_names():
-    workflow = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "subbot-review.yml"
-    ).read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOWS = ROOT / ".github" / "workflows"
 
-    trigger = workflow.split("  workflow_dispatch:", 1)[0]
-    assert "  workflow_run:" in trigger
-    assert 'workflows: ["tests"]' in trigger
-    assert "types: [completed]" in trigger
-    assert "branches:" not in trigger
-    assert "  pull_request:" not in trigger
-    assert "github.event.workflow_run.conclusion == 'success'" in workflow
-    assert "github.event_name == 'workflow_dispatch'" in workflow
-    assert '.base.ref == "main" and .head.sha == $sha' in workflow
+
+def test_pull_request_review_is_a_ci_dependent_check():
+    workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+
+    assert "  read-only-review:" in workflow
+    assert "    needs: test" in workflow
+    assert "needs.test.result == 'success'" in workflow
+    assert "github.event_name == 'pull_request'" in workflow
+    assert "blue_ant.subbot_report" in workflow
+    assert "blue-ant-subbot-report" in workflow
+
+
+def test_manual_review_workflow_is_read_only_and_manual_only():
+    workflow = (WORKFLOWS / "subbot-review.yml").read_text(encoding="utf-8")
+
+    assert "  workflow_dispatch:" in workflow
+    assert "  workflow_run:" not in workflow
+    assert "  pull_request:" not in workflow
+    assert "contents: read" in workflow
+    assert "pull-requests: read" in workflow
+    assert "persist-credentials: false" in workflow
