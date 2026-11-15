@@ -1,0 +1,126 @@
+name: Blue Ant Issue-Driven Worker Loop
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run-worker:
+    if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate issue instruction
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          raw = os.environ.get("ISSUE_BODY") or ""
+          instruction = json.loads(raw)
+          required = {"instruction_id", "project_id", "repository", "ref", "worker_role", "task"}
+          if not isinstance(instruction, dict) or set(instruction) != required:
+              raise SystemExit("Issue body must be a JSON object with exactly: " + ", ".join(sorted(required)))
+          for field in ("instruction_id", "project_id"):
+              if not isinstance(instruction[field], str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", instruction[field]):
+                  raise SystemExit(f"Invalid {field}")
+          repository = instruction["repository"]
+          if not isinstance(repository, str) or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]+", repository):
+              raise SystemExit("Only public repositories owned by r30796106-collab are allowed")
+          ref = instruction["ref"]
+          if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target ref")
+          if instruction["worker_role"] not in {"repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"}:
+              raise SystemExit("Worker role is not in the approved allowlist")
+          task = instruction["task"]
+          if not isinstance(task, str) or not task.strip() or len(task) > 1000:
+              raise SystemExit("Task context must contain 1–1000 characters")
+          os.makedirs("instruction", exist_ok=True)
+          with open("instruction/task.json", "w", encoding="utf-8") as stream:
+              json.dump(instruction, stream)
+          PY
+
+      - name: Read validated instruction fields
+        id: instruction
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          data = json.load(open("instruction/task.json", encoding="utf-8"))
+          for key in ("instruction_id", "project_id", "repository", "ref", "worker_role"):
+              print(f"{key}={data[key]}")
+          PY
+
+      - name: Checkout Blue Ant worker
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.instruction.outputs.repository }}
+          ref: ${{ steps.instruction.outputs.ref }}
+          path: targets/${{ steps.instruction.outputs.project_id }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Blue Ant
+        run: python -m pip install -e "blue-ant[dev]"
+
+      - name: Execute fixed read-only specialist
+        env:
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+          WORKER_ROLE: ${{ steps.instruction.outputs.worker_role }}
+          INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
+        run: |
+          mkdir -p artifacts
+          blue-ant-workforce \
+            --project "$PROJECT_ID=targets/$PROJECT_ID" \
+            --roles "$WORKER_ROLE" \
+            --max-workers 4 \
+            --output "artifacts/$INSTRUCTION_ID-report.json"
+
+      - name: Return result to the controlling issue
+        uses: actions/github-script@v7
+        env:
+          REPORT_PATH: artifacts/${{ steps.instruction.outputs.instruction_id }}-report.json
+          INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
+          PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
+          WORKER_ROLE: ${{ steps.instruction.outputs.worker_role }}
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8'));
+            const findings = (report.assignments || []).flatMap(item => item.findings || []);
+            const lines = findings.slice(0, 40).map(f =>
+              '- **' + f.severity + '** `' + f.path + '`: ' + f.message
+            );
+            const body = [
+              '## Blue Ant worker result',
+              '',
+              '- Instruction: `' + process.env.INSTRUCTION_ID + '`',
+              '- Project: `' + process.env.PROJECT_ID + '`',
+              '- Specialist: `' + process.env.WORKER_ROLE + '`',
+              '- Assignments: ' + (report.assignments || []).length,
+              '- Findings: ' + findings.length,
+              '',
+              lines.length ? lines.join('\\n') : 'No findings returned.',
+              '',
+              '> This is a fixed read-only audit result. It does not execute the free-form task text, modify files, or run target tests.',
+              '> Reply or open another `[blue-ant]` issue with the next instruction after reviewing this result.'
+            ].join('\\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
