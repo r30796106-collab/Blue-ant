@@ -52,6 +52,50 @@ Open **Actions → Blue Ant Sub-bot Review → Run workflow**. Optionally provid
 
 The workflow currently uses the runner's default GitHub token and is intended for public targets. Private target repositories require an explicitly configured, least-privilege credential and are not enabled by default.
 
+
+## Parallel multi-project workforce (v1)
+
+The workforce can run multiple specialist tasks at the same time against one repository, and can coordinate tasks across several registered repositories in one local invocation. Each task receives a unique workspace path; built-in v1 specialists remain read-only.
+
+### Local use
+
+Install Blue Ant, then provide one or more checked-out repositories. Repeat `--project` for every repository:
+
+```bash
+python -m pip install -e ".[dev]"
+blue-ant-workforce \
+  --project elon=/path/to/ELON \
+  --project trading=/path/to/ai_crypto_bot \
+  --project animation=/path/to/StoryVerseAI \
+  --roles repo_analyst,test_auditor,docs_auditor,safety_auditor \
+  --max-workers 4 \
+  --output blue-ant-workforce-report.json
+```
+
+Every project receives one task per selected role. Tasks across the same repository and different repositories share one bounded worker pool, so they can run concurrently without exceeding `--max-workers`. A worker failure is recorded per task and does not discard successful results from other tasks.
+
+### GitHub Actions: multiple repositories
+
+Open **Actions → Blue Ant Multi-Repository Workforce → Run workflow** and provide a JSON array. Each matrix entry checks out one public repository and runs its specialist tasks concurrently; up to four repositories run at once:
+
+```json
+[
+  {"project_id":"elon","repository":"owner/ELON","ref":"main"},
+  {"project_id":"trading","repository":"owner/ai_crypto_bot","ref":"main"},
+  {"project_id":"animation","repository":"owner/StoryVerseAI","ref":"main"}
+]
+```
+
+The workflow uses read-only checkout permissions and does not persist repository credentials. It is intended for public repositories. Private repositories require a separately configured least-privilege credential and are not enabled by this workflow.
+
+### v1 boundaries
+
+- Current workers are repository analysts/auditors, not autonomous code editors.
+- No shell execution, package installation, project-code execution, deployment, or real-money trading.
+- Task workspaces are separated directories, not OS-level sandboxes.
+- Parallelism is bounded (1–16 workers); the GitHub matrix runs at most four repositories concurrently.
+- Patch generation, approval, application, and post-change verification are the next developer-worker milestone.
+
 ## Reuse-first strategy
 
 Prefer mature open-source components over rebuilding equivalent functionality:
