@@ -103,7 +103,7 @@ jobs:
           proposal = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "proposal.json"), encoding="utf-8"))
           with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "changed-paths.nul"), "wb") as f:
               for item in proposal["changes"]:
-                  f.write(item["path"].encode("utf-8") + b"\\0")
+                  f.write(item["path"].encode("utf-8") + bytes([0]))
           PY
           git add --all --pathspec-from-file="$RUNNER_TEMP/blue-ant-instruction/changed-paths.nul" --pathspec-file-nul
           git diff --cached --check
