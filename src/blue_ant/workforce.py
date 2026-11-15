@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from .audit import AuditLog
 from .projects import ProjectRegistry
 from .resources import ResourcePolicy, ResourceSnapshot
 from .subbots import Finding, SubBotFactory, SubBotRole
@@ -52,6 +53,7 @@ class Workforce:
         max_workers: int = 4,
         max_tasks: int = 64,
         snapshot_sources: bool = False,
+        audit_log: AuditLog | None = None,
         resource_policy: ResourcePolicy | None = None,
         resource_snapshot: ResourceSnapshot | None = None,
     ) -> None:
@@ -61,6 +63,8 @@ class Workforce:
             raise ValueError("max_tasks must be between 1 and 256")
         if not isinstance(snapshot_sources, bool):
             raise ValueError("snapshot_sources must be a boolean")
+        if audit_log is not None and not isinstance(audit_log, AuditLog):
+            raise ValueError("audit_log must be an AuditLog instance")
         if (resource_policy is None) != (resource_snapshot is None):
             raise ValueError("resource_policy and resource_snapshot must be provided together")
         if resource_policy is not None and not isinstance(resource_policy, ResourcePolicy):
@@ -78,6 +82,7 @@ class Workforce:
         )
         self.max_tasks = max_tasks
         self.snapshot_sources = snapshot_sources
+        self.audit_log = audit_log
 
     def run(self, assignments: Iterable[WorkAssignment]) -> tuple[WorkResult, ...]:
         jobs = tuple(assignments)
@@ -128,6 +133,21 @@ class Workforce:
 
             prepared.append((job, project.source_root, task_workspace, scan_root))
 
+        if self.audit_log is not None:
+            self.audit_log.record(
+                "workforce_started",
+                task_count=len(prepared),
+                max_workers=self.max_workers,
+                snapshot_sources=self.snapshot_sources,
+            )
+            for job, _, _, _ in prepared:
+                self.audit_log.record(
+                    "workforce_task_started",
+                    task_id=job.task_id,
+                    project_id=job.project_id,
+                    role=job.role.value,
+                )
+
         def execute(item: tuple[WorkAssignment, Path, Path, Path]) -> WorkResult:
             job, source_root, workspace, scan_root = item
             bot = SubBotFactory(max_bots=1).create_fleet([job.role])[0]
@@ -144,5 +164,30 @@ class Workforce:
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="blue-ant-worker") as pool:
             futures = [pool.submit(execute, item) for item in prepared]
             for future in as_completed(futures):
-                results.append(future.result())
+                result = future.result()
+                results.append(result)
+                if self.audit_log is not None:
+                    if result.error is None:
+                        self.audit_log.record(
+                            "workforce_task_completed",
+                            task_id=result.task_id,
+                            project_id=result.project_id,
+                            role=result.role,
+                            finding_count=len(result.findings),
+                        )
+                    else:
+                        self.audit_log.record(
+                            "workforce_task_failed",
+                            task_id=result.task_id,
+                            project_id=result.project_id,
+                            role=result.role,
+                            error_type=result.error.split(":", 1)[0],
+                        )
+        if self.audit_log is not None:
+            self.audit_log.record(
+                "workforce_completed",
+                task_count=len(results),
+                succeeded=sum(result.error is None for result in results),
+                failed=sum(result.error is not None for result in results),
+            )
         return tuple(sorted(results, key=lambda result: (result.project_id, result.task_id)))
