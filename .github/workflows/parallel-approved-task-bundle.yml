@@ -208,6 +208,7 @@ jobs:
           - Branch: $BRANCH
 
           This PR was created only after explicit owner approval. It is not merged automatically.
+          The per-task hash-chained patch audit log is retained as a workflow artifact.
           EOF
           gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" --title "Blue Ant: $TASK_ID" --body-file "$RUNNER_TEMP/pr-body.md"
 
@@ -244,6 +245,7 @@ jobs:
                 '- Isolated worker matrix: **' + result + '**',
                 '- Each task runs in its own GitHub runner/workspace and branch.',
                 '- Successful tasks open separate pull requests and trigger independent review/test workflows.',
+                '- Per-task patch audit logs are retained as workflow artifacts when patch application starts.',
                 '- No pull request is merged automatically.'
               ].join('\n')
             });
