@@ -391,3 +391,26 @@ connection. ChatGPT must be active/connected to submit the next command and
 read the result. True unattended continuous control requires a separately
 hosted controller and explicitly configured API credentials; that is not part
 of V1.
+
+
+### Parallel approved-task worker: required credential
+
+The `Blue Ant Parallel Approved Task Bundle` workflow is fail-closed: it
+requires a repository secret named `BLUE_ANT_WORKER_TOKEN` before it checks
+out or writes to a target repository. It deliberately does not fall back to
+the workflow's default `GITHUB_TOKEN`, which normally has access only to the
+Blue Ant repository.
+
+For a target repository such as `r30796106-collab/Elon`, configure the
+secret in **Blue Ant → Settings → Secrets and variables → Actions**. The
+fine-grained personal access token must be granted access to the exact target
+repository and have **Contents: Read and write** and **Pull requests: Read
+and write**. Keep the token private; never paste it into an issue, source
+file, or chat. The workflow uses the token only for target checkout, branch
+push, and PR creation. Review/test dispatch back to Blue Ant uses the
+workflow-scoped GitHub token and its declared Actions permission.
+
+A missing or mis-scoped token should fail before target checkout. A successful
+credential preflight does not itself prove that GitHub accepted all write
+operations; verify the complete flow with a disposable test proposal before
+using real project changes.

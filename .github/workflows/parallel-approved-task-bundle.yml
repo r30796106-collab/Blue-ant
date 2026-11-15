@@ -101,12 +101,21 @@ jobs:
           name: blue-ant-approved-task-bundle
           path: instruction/tasks
 
+      - name: Require an explicitly configured target-repository worker token
+        env:
+          BLUE_ANT_WORKER_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
+        run: |
+          if [ -z "${BLUE_ANT_WORKER_TOKEN}" ]; then
+            echo "::error::BLUE_ANT_WORKER_TOKEN is not configured. No target checkout or write will be attempted."
+            exit 1
+          fi
+
       - name: Checkout target repository at approved base ref
         uses: actions/checkout@v4
         with:
           repository: ${{ needs.validate-bundle.outputs.repository }}
           ref: ${{ needs.validate-bundle.outputs.ref }}
-          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
           path: target
           persist-credentials: true
 
@@ -148,7 +157,7 @@ jobs:
 
       - name: Open task-specific pull request
         env:
-          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
           TARGET_REPOSITORY: ${{ needs.validate-bundle.outputs.repository }}
           TARGET_REF: ${{ needs.validate-bundle.outputs.ref }}
           BRANCH: ${{ steps.commit.outputs.branch }}
