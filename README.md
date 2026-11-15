@@ -119,6 +119,14 @@ and special files fail closed; copied files receive owner-only permissions.
 The source project is never modified. A task snapshot is not an OS sandbox,
 and the workspace is not automatically deleted or overwritten on reruns.
 
+For read-only specialist fleets, add `--shared-snapshot-sources` alongside
+`--snapshot-sources` to copy each registered project once and reuse that
+private snapshot across its workers. Every assignment still receives a
+separate task workspace; workers only read the shared snapshot. The shared
+snapshot is retained under the project workspace and is not overwritten on a
+rerun. This option requires `--snapshot-sources`; the ChatGPT bridge uses
+shared snapshots automatically when snapshot mode is requested.
+
 For resource-aware concurrency on a constrained device, provide a CPU count
 and available memory (MiB). Blue Ant then caps the worker pool using a
 512 MiB default reserve and 256 MiB per-worker budget:

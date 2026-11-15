@@ -104,9 +104,13 @@ def test_runner_uses_isolated_snapshot_when_requested(tmp_path):
     audit_path = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "workforce-audit.jsonl"
     assert audit_path.is_file()
     assert not (tmp_path / "out" / "workforce-audit.jsonl").exists()
-    task_workspace = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "demo" / "tasks" / "cycle-1-repo-analyst"
-    assert (task_workspace / "README.md").is_file()
-    assert not (task_workspace / ".env").exists()
+    project_workspace = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "demo"
+    task_workspace = project_workspace / "tasks" / "cycle-1-repo-analyst"
+    shared_snapshot = project_workspace / "shared-source"
+    assert task_workspace.is_dir()
+    assert (shared_snapshot / "README.md").is_file()
+    assert not (shared_snapshot / ".env").exists()
+    assert not (task_workspace / "README.md").exists()
     assert (target / ".env").read_text(encoding="utf-8") == "TOKEN=keep-out"
     assert not (tmp_path / "out" / "workspaces").exists()
     assert not any((tmp_path / "out").rglob(".env"))

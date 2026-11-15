@@ -39,6 +39,7 @@ def run_bridge_command(
         registry,
         max_workers=min(4, command["max_cycles"]),
         snapshot_sources=command["snapshot_sources"],
+        shared_snapshot_sources=command["snapshot_sources"],
         audit_path=workspace_root / "workforce-audit.jsonl",
     )
 
