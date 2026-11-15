@@ -1,4 +1,4 @@
-""""Validate and stage up to four independent, human-approved patch tasks."""
+"""Validate and stage up to four independent, human-approved patch tasks."""
 from __future__ import annotations
 
 import argparse
