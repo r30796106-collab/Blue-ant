@@ -89,9 +89,10 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let audit = null, plan = null;
+            let audit = null, plan = null, decision = null;
             try { audit = JSON.parse(fs.readFileSync(process.env.AUDIT_PATH, 'utf8')); } catch (_) {}
             try { plan = JSON.parse(fs.readFileSync(process.env.PLAN_PATH, 'utf8')); } catch (_) {}
+            try { decision = JSON.parse(fs.readFileSync(process.env.DECISION_PATH, 'utf8')); } catch (_) {}
             const tasks = plan?.tasks || [];
             const body = [
               '## Blue Ant ChatGPT bridge result',
@@ -99,7 +100,8 @@ jobs:
               '- Status: **' + (process.env.JOB_STATUS || 'unknown') + '**',
               '- Command: ' + (process.env.COMMAND_ID || 'validation failed'),
               '- Target: ' + (process.env.TARGET_REPOSITORY || 'not resolved') + '@' + (process.env.TARGET_REF || 'not resolved'),
-              '- Audit cycles: ' + (audit?.cycles_used ?? 0),
+              '- Parallel workers completed: ' + (audit?.cycles_used ?? 0),
+              '- Controller decision: **' + (decision?.action || 'unavailable') + '**',
               '- Plan tasks: ' + tasks.length,
               '',
               '### Review queue',
