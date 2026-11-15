@@ -9,6 +9,7 @@ from typing import Iterable
 
 from .projects import ProjectRegistry
 from .subbots import Finding, SubBotFactory, SubBotRole
+from .workspace_snapshot import create_workspace_snapshot
 
 
 _TASK_ID = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
@@ -35,11 +36,12 @@ class WorkResult:
 
 
 class Workforce:
-    """Run multiple specialist tasks concurrently across one or many projects.
+    """Run specialist tasks concurrently with separate task workspaces.
 
-    Every assignment receives its own task workspace directory. Current
-    built-in specialists inspect source roots read-only; they do not yet write
-    code. The workspace is reserved for later isolated patch-producing workers.
+    By default, read-only specialists inspect the registered source directly.
+    Set snapshot_sources=True to inspect a bounded private copy in each task
+    workspace. Snapshots exclude common generated directories and credential
+    files, reject symlinks, and never modify the registered source.
     """
 
     def __init__(
@@ -48,14 +50,18 @@ class Workforce:
         *,
         max_workers: int = 4,
         max_tasks: int = 64,
+        snapshot_sources: bool = False,
     ) -> None:
         if not 1 <= max_workers <= 16:
             raise ValueError("max_workers must be between 1 and 16")
         if not 1 <= max_tasks <= 256:
             raise ValueError("max_tasks must be between 1 and 256")
+        if not isinstance(snapshot_sources, bool):
+            raise ValueError("snapshot_sources must be a boolean")
         self.registry = registry
         self.max_workers = max_workers
         self.max_tasks = max_tasks
+        self.snapshot_sources = snapshot_sources
 
     def run(self, assignments: Iterable[WorkAssignment]) -> tuple[WorkResult, ...]:
         jobs = tuple(assignments)
@@ -64,7 +70,7 @@ class Workforce:
         if len(jobs) > self.max_tasks:
             raise ValueError("assignments exceed configured max_tasks")
         ids: set[str] = set()
-        prepared: list[tuple[WorkAssignment, Path, Path]] = []
+        prepared: list[tuple[WorkAssignment, Path, Path, Path]] = []
         for job in jobs:
             if not isinstance(job, WorkAssignment):
                 raise ValueError("assignments must be WorkAssignment instances")
@@ -91,16 +97,26 @@ class Workforce:
                 resolved.relative_to(tasks_root.resolve())
             except ValueError as exc:
                 raise ValueError("task workspace escapes its tasks directory") from exc
-            task_workspace.mkdir(mode=0o700, exist_ok=True)
-            if task_workspace.is_symlink() or not task_workspace.is_dir():
-                raise ValueError("task workspace is not a safe directory")
-            prepared.append((job, project.source_root, task_workspace))
 
-        def execute(item: tuple[WorkAssignment, Path, Path]) -> WorkResult:
-            job, source_root, workspace = item
+            if self.snapshot_sources:
+                if task_workspace.exists() and (
+                    not task_workspace.is_dir() or any(task_workspace.iterdir())
+                ):
+                    raise ValueError("snapshot task workspace must be absent or empty; refusing to overwrite")
+                scan_root = create_workspace_snapshot(project.source_root, task_workspace).workspace
+            else:
+                task_workspace.mkdir(mode=0o700, exist_ok=True)
+                if task_workspace.is_symlink() or not task_workspace.is_dir():
+                    raise ValueError("task workspace is not a safe directory")
+                scan_root = project.source_root
+
+            prepared.append((job, project.source_root, task_workspace, scan_root))
+
+        def execute(item: tuple[WorkAssignment, Path, Path, Path]) -> WorkResult:
+            job, source_root, workspace, scan_root = item
             bot = SubBotFactory(max_bots=1).create_fleet([job.role])[0]
             try:
-                findings = tuple(bot.run(source_root))
+                findings = tuple(bot.run(scan_root))
                 return WorkResult(job.task_id, job.project_id, job.role.value, source_root, workspace, findings)
             except Exception as exc:
                 return WorkResult(

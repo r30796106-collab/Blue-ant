@@ -92,3 +92,46 @@ def test_enforces_worker_and_task_limits(tmp_path: Path):
         Workforce(ProjectRegistry(tmp_path), max_tasks=257)
     with pytest.raises(ValueError):
         Workforce(ProjectRegistry(tmp_path)).run([])
+
+
+
+def test_snapshot_mode_audits_private_copy_and_preserves_source(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    (source / ".env").write_text("TOKEN=secret", encoding="utf-8")
+    (source / ".git").mkdir()
+    (source / ".git" / "config").write_text("private git metadata", encoding="utf-8")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    results = Workforce(registry, snapshot_sources=True).run([
+        WorkAssignment("snapshot-docs", "repo", SubBotRole.DOCS_AUDITOR),
+    ])
+    result = results[0]
+
+    assert result.error is None
+    assert result.source_root == source.resolve()
+    assert result.workspace != source
+    assert (result.workspace / "README.md").is_file()
+    assert (result.workspace / "test_sample.py").is_file()
+    assert not (result.workspace / ".env").exists()
+    assert not (result.workspace / ".git").exists()
+    assert (source / ".env").read_text(encoding="utf-8") == "TOKEN=secret"
+    assert (source / ".git" / "config").read_text(encoding="utf-8") == "private git metadata"
+
+
+def test_snapshot_mode_refuses_to_overwrite_existing_task_workspace(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    workforce = Workforce(registry, snapshot_sources=True)
+    assignment = WorkAssignment("snapshot-docs", "repo", SubBotRole.DOCS_AUDITOR)
+
+    workforce.run([assignment])
+    workspace = tmp_path / "workspaces" / "repo" / "tasks" / "snapshot-docs"
+    marker = workspace / "human-file.txt"
+    marker.write_text("preserve", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="refusing to overwrite"):
+        workforce.run([assignment])
+
+    assert marker.read_text(encoding="utf-8") == "preserve"
