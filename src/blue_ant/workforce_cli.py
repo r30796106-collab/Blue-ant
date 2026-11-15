@@ -37,7 +37,7 @@ def main() -> int:
         assignments = []
         for index, (project_id, _) in enumerate(projects):
             for role in roles:
-                task_id = f"{index}-{project_id[:20]}-{role.value}"
+                task_id = f"task-{index}-{project_id[:20]}-{role.value}"
                 assignments.append(WorkAssignment(task_id, project_id, role))
 
         results = Workforce(registry, max_workers=args.max_workers).run(assignments)
