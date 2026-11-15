@@ -326,3 +326,27 @@ The blue-ant-propose command packages externally supplied replacement content fo
 The change JSON contains exactly path and content. The output uses the existing strict patch-proposal schema and can be submitted to the existing issue-approved PR worker for explicit human approval.
 
 Safety boundary: this builder never writes to the target workspace, creates files, generates code, runs commands, or approves/applies patches. It rejects safety-review, informational, test-result, missing-file, symlinked, and multi-file tasks. Only a human-reviewed audit finding tied to one concrete existing file is eligible. The target repository remains unchanged while the proposal is built.
+
+## Deterministic code preparation (human-reviewed drafts)
+
+The `blue-ant-prepare` command creates complete replacement-file drafts for
+a deliberately small set of mechanically verifiable documentation repairs:
+
+- Close an unclosed Markdown fenced code block using the matching fence marker.
+- Correct a broken relative README link only when exactly one existing target
+  matches the intended path case-insensitively and the Markdown link occurs once.
+
+Example:
+
+```bash
+blue-ant-prepare --workspace ./target --plan development-plan.json --output prepared-tasks.json
+```
+
+The command is read-only: it never changes the target workspace, executes target
+code, installs dependencies, or approves a patch. Unsupported, ambiguous,
+security-related, non-README, and oversized cases remain `manual_review`.
+The audit-to-plan workflow can include a prepared full-file draft in a generated
+coding-task issue, but `apply_approved` remains `false`. A human must verify
+the finding, review or replace the complete content, and explicitly approve by
+editing the issue as the repository owner. The existing worker then recalculates
+the target file hash and opens a PR; it never merges or deploys.
