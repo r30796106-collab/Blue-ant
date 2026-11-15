@@ -10,6 +10,7 @@ from .patches import FileChange, PatchProposal, PatchResult, apply_patch_proposa
 from .controller import FeedbackLoop, LoopInstruction, LoopObservation, LoopReport
 from .audit_loop import AuditCycle, AuditLoopReport, BoundedAuditLoop
 from .development_plan import DevelopmentPlan, PlanTask, generate_development_plan, plan_to_dict
+from .controlled_proposal import build_patch_proposal, proposal_to_dict
 
 __all__ = [
     "Scheduler", "TaskResult", "TaskSpec", "TaskStatus",
@@ -21,4 +22,5 @@ __all__ = [
     "FeedbackLoop", "LoopInstruction", "LoopObservation", "LoopReport",
     "AuditCycle", "AuditLoopReport", "BoundedAuditLoop",
     "DevelopmentPlan", "PlanTask", "generate_development_plan", "plan_to_dict",
+    "build_patch_proposal", "proposal_to_dict",
 ]
