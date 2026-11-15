@@ -64,9 +64,6 @@ def run_bridge_event(
 ) -> dict[str, Any]:
     """Process one local event exactly once and persist its final receipt."""
     event, event_hash = _load_event(event_path)
-    command = load_bridge_command(command_path)
-    if event["command_id"] != command["command_id"]:
-        raise ValueError("event command_id does not match the validated bridge command")
 
     state = Path(state_dir)
     if state.is_symlink() or not state.is_dir():
@@ -79,6 +76,29 @@ def run_bridge_event(
         "command_id": event["command_id"],
         "status": "processing",
     }
+
+    # Check an existing event claim before validating its referenced command.
+    # This makes reuse of an event ID with any changed payload fail explicitly,
+    # even when the altered payload also contains an invalid command reference.
+    if receipt_path.exists() or receipt_path.is_symlink():
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            raise ValueError("existing event receipt is not a regular file")
+        try:
+            prior = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("existing event receipt is unreadable; refusing replay") from exc
+        if prior.get("event_sha256") != event_hash:
+            raise ValueError("event_id was already used for a different event payload")
+        return {
+            "event_id": event["event_id"],
+            "status": prior.get("status", "unknown"),
+            "duplicate": True,
+        }
+
+    command = load_bridge_command(command_path)
+    if event["command_id"] != command["command_id"]:
+        raise ValueError("event command_id does not match the validated bridge command")
+
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
