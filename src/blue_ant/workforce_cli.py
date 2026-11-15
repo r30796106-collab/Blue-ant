@@ -18,6 +18,8 @@ def main() -> int:
                         help="Comma-separated approved specialist roles")
     parser.add_argument("--workspace-root", default=".blue-ant/workspaces")
     parser.add_argument("--max-workers", type=int, default=4)
+    parser.add_argument("--snapshot-sources", action="store_true",
+                        help="copy each project into a bounded, private task workspace before auditing")
     parser.add_argument("--output", default="blue-ant-workforce-report.json")
     args = parser.parse_args()
 
@@ -40,13 +42,14 @@ def main() -> int:
                 task_id = f"task-{index}-{project_id[:20]}-{role.value}"
                 assignments.append(WorkAssignment(task_id, project_id, role))
 
-        results = Workforce(registry, max_workers=args.max_workers).run(assignments)
+        results = Workforce(registry, max_workers=args.max_workers, snapshot_sources=args.snapshot_sources).run(assignments)
         payload = {
             "schema_version": 1,
             "mode": "parallel_read_only_multi_project",
             "projects": [{"project_id": project_id, "source_root": str(path.resolve())}
                          for project_id, path in projects],
             "max_workers": args.max_workers,
+            "workspace_mode": "bounded_source_snapshot" if args.snapshot_sources else "read_only_source_reference",
             "assignments": [{
                 "task_id": item.task_id,
                 "project_id": item.project_id,
@@ -62,7 +65,8 @@ def main() -> int:
             } for item in results],
             "limitations": [
                 "Built-in workers are read-only auditors; they do not write or execute project code.",
-                "Each assignment has a separate workspace reserved for future patch workers.",
+                "Each assignment has a separate task workspace; snapshot mode copies bounded source files into it.",
+                "Snapshots exclude common generated directories and credential-like files, reject symlinks, and are not OS sandboxes.",
                 "Workspace directories are not an operating-system security sandbox.",
                 "Security findings are heuristic and require human review.",
             ],
