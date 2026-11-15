@@ -4,7 +4,7 @@ Blue Ant is an independent, resource-aware multi-project workforce for coordinat
 
 ## Current milestone
 
-The deterministic core includes a bounded task scheduler, deny-by-default action policy, append-only audit writer, resource-capacity policy, and a first template-based sub-bot fleet.
+The deterministic core provides a bounded task scheduler, deny-by-default action policy, append-only audit writer, resource-capacity policy, a read-only sub-bot fleet, and an explicit project registry with isolated workspace paths.
 
 ## First sub-bot fleet
 
@@ -16,6 +16,23 @@ Four built-in, read-only specialists can inspect a checked-out repository:
 - **Safety Auditor** — flags selected dynamic-execution and shell-invocation patterns for human review.
 
 The fleet is created from fixed templates with a configurable hard limit (default four). It does not self-replicate, run shell commands, execute inspected project code, access credentials, or modify the target repository. Findings are heuristic and are not a security certification.
+
+## Project registry and workspaces
+
+Register each project explicitly before requesting its workspace:
+
+```python
+from blue_ant import ProjectRegistry
+
+registry = ProjectRegistry(".blue-ant/workspaces")
+registry.register("elon", "/path/to/ELON")
+registry.register("trading", "/path/to/ai_crypto_bot")
+
+elon_workspace = registry.workspace_for("elon", create=True)
+trading_workspace = registry.workspace_for("trading", create=True)
+```
+
+The registry validates project IDs, rejects duplicate registrations and symlink source roots, and assigns one workspace directory per registered project. Workspace creation is opt-in, does not copy or modify source files, and rejects symlinked workspace directories. The current registry is in-memory; persistent configuration and actual worker execution isolation are later milestones. Separate directories alone are not an OS security sandbox.
 
 ### Run locally
 
@@ -65,4 +82,4 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 
 ## Verification status
 
-Tests are committed but have not yet been confirmed passing in CI. The GitHub Actions sub-bot workflow is committed; do not treat it as operational until a successful run produces the report artifact.
+The core and first sub-bot fleet passed GitHub Actions on Python 3.12 (19 tests). The project registry/workspace milestone is under review in its own pull request; its tests must pass CI before it is considered verified.
