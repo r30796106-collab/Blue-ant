@@ -444,6 +444,8 @@ The optional `snapshot_sources` field defaults to `false`. Set it to
 snapshot. Snapshots exclude common generated and credential-like paths, reject
 symlinks, and fail closed above the 5,000-file / 50 MB limits. The controller
 preserves this setting when continuing to the next pre-authorized role.
+Private bridge snapshots are stored outside the uploaded `artifacts/` directory;
+the workflow artifact contains JSON reports, not the copied project tree.
 
 **Important operating boundary:** this is a GitHub issue-based command/result
 bridge, not a continuously running ChatGPT process or a direct ChatGPT API
