@@ -4,6 +4,12 @@ on:
   push:
     branches: ["main", "feat/**"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Branch, tag, or commit to test
+        required: true
+        type: string
 
 jobs:
   test:
@@ -13,6 +19,8 @@ jobs:
         python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
