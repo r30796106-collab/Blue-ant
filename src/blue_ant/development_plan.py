@@ -67,7 +67,7 @@ def generate_development_plan(
     project = _text(project_id, "project_id", max_length=48)
     if not isinstance(audit_report, dict) or audit_report.get("schema_version") != 1:
         raise ValueError("audit report must be a schema_version 1 object")
-    if audit_report.get("mode") != "bounded_sequential_read_only_audit_loop":
+    if audit_report.get("mode") not in {"bounded_sequential_read_only_audit_loop", "bounded_parallel_read_only_audit"}:
         raise ValueError("unsupported audit report mode")
     if audit_report.get("project_id") != project:
         raise ValueError("audit report project_id does not match requested project")
