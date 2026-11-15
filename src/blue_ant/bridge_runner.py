@@ -118,8 +118,9 @@ def run_bridge_command(
         "audit": audit_report,
         "plan": plan,
         "decision": decision,
-        "event_log": f"{command_id}-events.jsonl",
     }
+    artifact_paths = {key: f"{command_id}-{key}.json" for key in artifacts}
+    artifact_paths["event_log"] = f"{command_id}-events.jsonl"
     for suffix, payload in artifacts.items():
         (output / f"{command_id}-{suffix}.json").write_text(
             json.dumps(payload, indent=2) + "\n",
@@ -131,7 +132,7 @@ def run_bridge_command(
         "action": decision["action"],
         "workers_completed": len(cycles),
         "workers_failed": sum(c["status"] == "failed" for c in cycles),
-        "artifacts": {key: f"{command_id}-{key}.json" for key in artifacts},
+        "artifacts": artifact_paths,
     }
 
 
