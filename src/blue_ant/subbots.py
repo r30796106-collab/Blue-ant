@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+import posixpath
 import re
 from typing import Iterable
 
@@ -123,21 +124,68 @@ def _inventory(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
 def _test_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
     names = [name for name, _ in files]
     tests = [name for name in names if name.startswith(("tests/", "test/")) or Path(name).name.startswith("test_")]
-    workflows = [name for name in names if name.startswith(".github/workflows/")]
+    workflows = [(name, content) for name, content in files if name.startswith(".github/workflows/")]
     findings = []
     if not tests:
         findings.append(Finding(bot_id, SubBotRole.TEST_AUDITOR.value, "warning", ".", "No conventional test files found."))
     if not workflows:
         findings.append(Finding(bot_id, SubBotRole.TEST_AUDITOR.value, "warning", ".", "No GitHub Actions workflow files found."))
+    elif tests:
+        test_command = re.compile(r"\b(pytest|unittest|tox|nox)\b|\b(cargo\s+test|go\s+test|npm\s+test|dotnet\s+test)\b", re.IGNORECASE)
+        if not any(test_command.search(content) for _, content in workflows):
+            findings.append(Finding(
+                bot_id, SubBotRole.TEST_AUDITOR.value, "warning", workflows[0][0],
+                "Test files exist, but no recognized test command was found in the repository's GitHub Actions workflows."
+            ))
     findings.append(Finding(bot_id, SubBotRole.TEST_AUDITOR.value, "info", ".", f"Found {len(tests)} test files and {len(workflows)} workflow files; tests were not executed."))
     return findings
 
 
 def _docs_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
-    names = {name.lower() for name, _ in files}
-    if any(name in names for name in ("readme.md", "readme.rst", "readme")):
-        return [Finding(bot_id, SubBotRole.DOCS_AUDITOR.value, "info", "README.md", "Project README is present; content quality requires human review.")]
-    return [Finding(bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", ".", "No README file found.")]
+    readmes = [
+        (name, content) for name, content in files
+        if Path(name).name.lower() in {"readme.md", "readme.rst", "readme"}
+    ]
+    if not readmes:
+        return [Finding(bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", ".", "No README file found.")]
+
+    names = {name for name, _ in files}
+    findings: list[Finding] = []
+    for readme_path, content in readmes:
+        lines = content.splitlines()
+        fence_open = False
+        for line_no, line in enumerate(lines, 1):
+            if line.lstrip().startswith("```"):
+                fence_open = not fence_open
+        if fence_open:
+            findings.append(Finding(
+                bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
+                "README contains an unclosed fenced code block."
+            ))
+
+        link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+        for match in link_pattern.finditer(content):
+            destination = match.group(1).strip().split()[0].strip("<>")
+            if (not destination or destination.startswith(("#", "/", "//"))
+                or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", destination)):
+                continue
+            local_target = destination.split("#", 1)[0].split("?", 1)[0]
+            if not local_target:
+                continue
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(readme_path), local_target))
+            if resolved.startswith("../") or resolved not in names:
+                findings.append(Finding(
+                    bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
+                    f"README contains a relative link to a missing repository file: {destination[:160]}"
+                ))
+                if len(findings) >= 20:
+                    break
+    if not findings:
+        findings.append(Finding(
+            bot_id, SubBotRole.DOCS_AUDITOR.value, "info",
+            readmes[0][0], "README is present; no unclosed code fences or broken relative links were detected."
+        ))
+    return findings
 
 
 _SENSITIVE_PATTERNS = (
