@@ -112,6 +112,16 @@ jobs:
             --target-ref "$TARGET_REF" \
             --output "artifacts/$INSTRUCTION_ID-plan.json"
 
+      - name: Prepare deterministic documentation repair drafts
+        env:
+          INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
+        run: |
+          mkdir -p artifacts
+          blue-ant-prepare \
+            --workspace target \
+            --plan "artifacts/$INSTRUCTION_ID-plan.json" \
+            --output "artifacts/$INSTRUCTION_ID-prepared-tasks.json"
+
       - name: Upload audit and development plan
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,6 +130,7 @@ jobs:
           path: |
             artifacts/${{ steps.instruction.outputs.instruction_id }}-audit.json
             artifacts/${{ steps.instruction.outputs.instruction_id }}-plan.json
+            artifacts/${{ steps.instruction.outputs.instruction_id }}-prepared-tasks.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -129,6 +140,7 @@ jobs:
         env:
           REPORT_PATH: artifacts/${{ steps.instruction.outputs.instruction_id }}-audit.json
           PLAN_PATH: artifacts/${{ steps.instruction.outputs.instruction_id }}-plan.json
+          PREPARED_PATH: artifacts/${{ steps.instruction.outputs.instruction_id }}-prepared-tasks.json
           INSTRUCTION_ID: ${{ steps.instruction.outputs.instruction_id }}
           PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.repository }}
@@ -137,9 +149,11 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            let audit = null, plan = null;
+            let audit = null, plan = null, preparedReport = null;
             try { audit = JSON.parse(fs.readFileSync(process.env.REPORT_PATH, 'utf8')); } catch (_) {}
             try { plan = JSON.parse(fs.readFileSync(process.env.PLAN_PATH, 'utf8')); } catch (_) {}
+            try { preparedReport = JSON.parse(fs.readFileSync(process.env.PREPARED_PATH, 'utf8')); } catch (_) {}
+            const preparedByTask = new Map((preparedReport?.prepared_tasks || []).map(item => [item.task_id, item]));
             const tasks = plan?.tasks || [];
             const eligible = tasks.filter(t => t.kind === 'audit_finding_review' && t.role !== 'safety_auditor');
             const safety = tasks.filter(t => t.kind === 'security_human_review');
@@ -189,14 +203,19 @@ jobs:
               for (const task of eligible) {
                 if (!task || typeof task.task_id !== 'string' || typeof task.path !== 'string' || !task.path ||
                     task.path.startsWith('/') || task.path.split('/').includes('..') || task.path.includes('\\') || task.path.includes(String.fromCharCode(0))) continue;
-                const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan, task_id: task.task_id, replacement_content: '', apply_approved: false };
+                const prepared = preparedByTask.get(task.task_id);
+                const draftContent = prepared?.status === 'prepared' && typeof prepared.content === 'string' && prepared.content.length <= 30000 ? prepared.content : '';
+                const preparationNote = draftContent
+                  ? 'Blue Ant prepared a deterministic draft using strategy: ' + prepared.strategy + '. Review every line before approval.'
+                  : 'Blue Ant could not safely prepare this change automatically. Write the complete replacement content yourself after verifying the finding.';
+                const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan, task_id: task.task_id, replacement_content: draftContent, apply_approved: false };
                 const taskBody = [
                   '## Blue Ant draft coding task', '',
                   '- Source audit instruction: #' + context.issue.number,
                   '- Target: ' + process.env.TARGET_REPOSITORY + '@' + process.env.TARGET_REF,
                   '- Task: ' + task.task_id, '- File: ' + task.path, '- Finding: ' + task.evidence, '',
                   '### Human action required', '',
-                  'Independently verify the finding. If confirmed, replace the empty replacement_content value below with the complete content for exactly this existing file, then set apply_approved to true. Save the issue edit as the repository owner. No worker runs on issue creation; it only runs after an owner-authored edit with explicit approval.', '',
+                  'Independently verify the finding and inspect the replacement_content draft. ' + preparationNote + ' If confirmed, ensure replacement_content contains the complete correct content for exactly this existing file, then set apply_approved to true. Save the issue edit as the repository owner. No worker runs on issue creation; it only runs after an owner-authored edit with explicit approval.', '',
                   'Safety-auditor findings are never eligible for this route.', '',
                   '### Structured instruction', '', '```json', JSON.stringify(taskPayload, null, 2), '```'
                 ].join('\n');
