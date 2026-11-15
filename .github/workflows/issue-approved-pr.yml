@@ -18,6 +18,7 @@ jobs:
       - name: Validate explicit approval and patch proposal
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
+          BLUE_ANT_WORKER_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
         run: |
           python - <<'PY'
           import json, os, re
@@ -141,14 +142,13 @@ jobs:
           git -C target config user.name "github-actions[bot]"
           git -C target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C target switch -c "$BRANCH"
-          git -C target add --all
           git -C target commit -m "Blue Ant: approved patch for ${PROJECT_ID}"
           git -C target push --set-upstream origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Open pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
           TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           BRANCH: ${{ steps.commit.outputs.branch }}
