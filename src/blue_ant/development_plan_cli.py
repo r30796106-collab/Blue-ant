@@ -14,12 +14,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--audit-report", required=True)
     parser.add_argument("--test-report")
+    parser.add_argument("--target-repository")
+    parser.add_argument("--target-ref")
     parser.add_argument("--output", default="blue-ant-development-plan.json")
     args = parser.parse_args(argv)
     try:
         audit = json.loads(Path(args.audit_report).read_text(encoding="utf-8"))
         tests = json.loads(Path(args.test_report).read_text(encoding="utf-8")) if args.test_report else None
-        plan = generate_development_plan(audit, tests, project_id=args.project_id)
+        plan = generate_development_plan(audit, tests, project_id=args.project_id, target_repository=args.target_repository, target_ref=args.target_ref)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(plan_to_dict(plan), indent=2) + "\n", encoding="utf-8")
