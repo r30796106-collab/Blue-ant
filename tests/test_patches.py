@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+from blue_ant.audit import AuditLog
 
 import pytest
 
@@ -184,9 +186,69 @@ def test_patch_rolls_back_prior_file_when_later_replace_fails(tmp_path: Path, mo
         FileChange("second.txt", "second-new", sha256_text("second-old")),
     )
 
+    audit = AuditLog(tmp_path.parent / "patch-failure-audit.jsonl")
     with pytest.raises(OSError, match="simulated"):
-        apply_patch_proposal(tmp_path, changes, approved=True)
+        apply_patch_proposal(tmp_path, changes, approved=True, audit=audit)
 
+    verification = audit.verify()
+    assert verification.valid is True
+    events = [json.loads(line)["event"] for line in audit.path.read_text(encoding="utf-8").splitlines()]
+    assert events == ["patch_apply_started", "patch_apply_failed"]
     assert first.read_text(encoding="utf-8") == "first-old"
     assert second.read_text(encoding="utf-8") == "second-old"
     assert not list(tmp_path.glob(".blue-ant-*"))
+
+
+
+def test_patch_writes_hash_chained_audit_events_on_success(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    audit = AuditLog(tmp_path / "patch-audit.jsonl")
+    result = apply_patch_proposal(
+        workspace,
+        proposal(FileChange("created.txt", "content", None)),
+        approved=True,
+        audit=audit,
+    )
+
+    verification = audit.verify()
+    assert result.created_paths == ("created.txt",)
+    assert verification.valid is True
+    assert verification.records == 2
+    events = [json.loads(line) for line in audit.path.read_text(encoding="utf-8").splitlines()]
+    assert [item["event"] for item in events] == ["patch_apply_started", "patch_apply_succeeded"]
+    assert events[0]["paths"] == ["created.txt"]
+
+
+def test_patch_refuses_to_modify_its_own_audit_log(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    audit_path = workspace / ".blue-ant" / "patch-audit.jsonl"
+    audit = AuditLog(audit_path)
+
+    with pytest.raises(ValueError, match="cannot modify its own audit log"):
+        apply_patch_proposal(
+            workspace,
+            proposal(FileChange(".blue-ant/patch-audit.jsonl", "forged", None)),
+            approved=True,
+            audit=audit,
+        )
+
+
+def test_patch_refuses_a_previously_tampered_audit_log(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    audit = AuditLog(tmp_path / "patch-audit.jsonl")
+    audit.record("initial")
+    audit.path.write_text(
+        audit.path.read_text(encoding="utf-8").replace('"event": "initial"', '"event": "changed"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="failed verification"):
+        apply_patch_proposal(
+            workspace,
+            proposal(FileChange("new.txt", "content", None)),
+            approved=True,
+            audit=audit,
+        )
+    assert not (workspace / "new.txt").exists()
