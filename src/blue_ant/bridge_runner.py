@@ -32,7 +32,11 @@ def run_bridge_command(
 
     registry = ProjectRegistry(output / "workspaces")
     registry.register(command["project_id"], target_path)
-    workforce = Workforce(\n        registry,\n        max_workers=min(4, command["max_cycles"]),\n        snapshot_sources=command["snapshot_sources"],\n    )
+    workforce = Workforce(
+        registry,
+        max_workers=min(4, command["max_cycles"]),
+        snapshot_sources=command["snapshot_sources"],
+    )
 
     roles = [SubBotRole(role) for role in command["roles"][: command["max_cycles"]]]
     assignments = [
@@ -74,10 +78,12 @@ def run_bridge_command(
         "cycles_used": len(cycles),
         "stop_reason": "worker_error" if any(c["status"] == "failed" for c in cycles) else "sequence_completed",
         "cycles": cycles,
-        "execution_mode": "parallel_read_only_specialists",\n        "workspace_mode": "bounded_source_snapshot" if command["snapshot_sources"] else "read_only_source_reference",
+        "execution_mode": "parallel_read_only_specialists",
+        "workspace_mode": "bounded_source_snapshot" if command["snapshot_sources"] else "read_only_source_reference",
         "limitations": [
             "All selected fixed specialists run concurrently; task context is metadata only.",
-            "Workers inspect repository text and do not execute target code or tests.",\n            "Snapshot mode excludes common generated and credential-like paths, rejects symlinks, and is not an OS sandbox.",
+            "Workers inspect repository text and do not execute target code or tests.",
+            "Snapshot mode excludes common generated and credential-like paths, rejects symlinks, and is not an OS sandbox.",
             "Findings are heuristic and require independent human verification.",
         ],
     }
