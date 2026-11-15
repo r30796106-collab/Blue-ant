@@ -326,3 +326,5 @@ The blue-ant-propose command packages externally supplied replacement content fo
 The change JSON contains exactly path and content. The output uses the existing strict patch-proposal schema and can be submitted to the existing issue-approved PR worker for explicit human approval.
 
 Safety boundary: this builder never writes to the target workspace, creates files, generates code, runs commands, or approves/applies patches. It rejects safety-review, informational, test-result, missing-file, symlinked, and multi-file tasks. Only a human-reviewed audit finding tied to one concrete existing file is eligible. The target repository remains unchanged while the proposal is built.
+
+[Blue Ant temporary smoke link](docs/__blue_ant_smoke_missing__.md)
