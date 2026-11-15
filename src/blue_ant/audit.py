@@ -70,7 +70,7 @@ def _last_record_hash(fd: int) -> str:
     else:
         line = tail.rstrip(b"\n")
 
-    if not tail.endswith(b"\\n") or tail.endswith(b"\\n\\n"):
+    if not tail.endswith(b"\n") or tail.endswith(b"\n\n"):
         raise ValueError("audit log final record must end with exactly one newline")
     if not line or len(line) > _MAX_EVENT_BYTES:
         raise ValueError("audit log has an empty or oversized final record")
