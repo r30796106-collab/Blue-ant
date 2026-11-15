@@ -10,6 +10,10 @@ permissions:
   issues: write
   actions: write
 
+concurrency:
+  group: blue-ant-plan-approved-pr-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   plan-linked-proposal:
     if: github.event.issue.user.login == 'r30796106-collab' && startsWith(github.event.issue.title, '[blue-ant-plan-pr]')
@@ -97,6 +101,24 @@ jobs:
           path: blue-ant
           persist-credentials: false
 
+      - name: Reject duplicate plan-task execution before target checkout
+        env:
+          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          BRANCH="blue-ant/plan-issue-${ISSUE_NUMBER}"
+          EXISTING_PR="$(gh api --paginate "repos/${TARGET_REPOSITORY}/pulls?state=all&per_page=100" --jq "[.[] | select(.head.ref == \"${BRANCH}\" and .head.repo.full_name == \"${TARGET_REPOSITORY}\") | {number, state, html_url}] | .[]")"
+          if [ -n "${EXISTING_PR}" ]; then
+            echo "::error::This plan instruction already created a pull request for stable branch ${BRANCH}: ${EXISTING_PR}"
+            exit 1
+          fi
+          EXISTING_REFS="$(gh api "repos/${TARGET_REPOSITORY}/git/matching-refs/heads/${BRANCH}" --jq 'length')"
+          if [ "${EXISTING_REFS}" != "0" ]; then
+            echo "::error::Stable branch ${BRANCH} already exists without a discoverable PR. Manual reconciliation is required; refusing to overwrite it."
+            exit 1
+          fi
       - name: Checkout target repository at approved ref
         uses: actions/checkout@v4
         with:
@@ -138,10 +160,9 @@ jobs:
         id: commit
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-          RUN_ID: ${{ github.run_id }}
           PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
         run: |
-          BRANCH="blue-ant/plan-issue-${ISSUE_NUMBER}-run-${RUN_ID}"
+          BRANCH="blue-ant/plan-issue-${ISSUE_NUMBER}"
           git -C target config user.name "github-actions[bot]"
           git -C target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C target switch -c "$BRANCH"
