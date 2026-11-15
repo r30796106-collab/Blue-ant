@@ -31,3 +31,17 @@ def test_approved_issue_workers_keep_explicit_approval_and_cross_repo_token_gate
         assert "Cross-repository" in workflow
         assert "BLUE_ANT_WORKER_TOKEN" in workflow
         assert "never merges" in workflow.lower()
+
+
+PATCH_WORKFLOWS = (
+    ".github/workflows/issue-approved-patch.yml",
+    ".github/workflows/issue-approved-pr.yml",
+)
+
+
+def test_patch_workflows_match_the_patch_engine_ten_file_limit():
+    for relative_path in PATCH_WORKFLOWS:
+        workflow = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "len(changes) > 10" in workflow
+        assert "Proposal must contain 1–10 changes" in workflow
+        assert "len(changes) > 50" not in workflow
