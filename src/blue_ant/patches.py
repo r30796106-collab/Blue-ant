@@ -7,6 +7,7 @@ intentionally not supported.
 """
 from __future__ import annotations
 
+from .audit import AuditLog
 from dataclasses import dataclass
 import hashlib
 import os
@@ -94,6 +95,17 @@ def _atomic_write(target: Path, content: str, mode: int) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_name, target)
+        if audit is not None:
+            audit.record(
+                "patch_apply_succeeded",
+                proposal_id=proposal.proposal_id,
+                project_id=proposal.project_id,
+                task_id=proposal.task_id,
+                changed_paths=[target.relative_to(root).as_posix() for target, _, _, _ in prepared],
+            )
+            verification = audit.verify()
+            if not verification.valid:
+                raise RuntimeError(f"patch audit log failed verification: {verification.error}")
     except Exception:
         try:
             os.close(fd)
@@ -111,6 +123,7 @@ def apply_patch_proposal(
     proposal: PatchProposal,
     *,
     approved: bool = False,
+    audit: AuditLog | None = None,
 ) -> PatchResult:
     """Apply an explicitly approved proposal after complete validation.
 
@@ -141,6 +154,8 @@ def apply_patch_proposal(
     if not root.is_dir():
         raise NotADirectoryError(str(root))
 
+    if audit is not None and not isinstance(audit, AuditLog):
+        raise TypeError("audit must be an AuditLog instance")
     prepared: list[tuple[Path, str, str | None, int]] = []
     seen: set[str] = set()
     total_bytes = 0
@@ -165,6 +180,8 @@ def apply_patch_proposal(
             raise ValueError(f"combined patch content exceeds {_MAX_TOTAL_BYTES} bytes")
 
         target = _resolve_target(root, relative)
+        if audit is not None and target.resolve(strict=False) == audit.path.resolve(strict=False):
+            raise ValueError("patch proposal cannot modify its own audit log")
         if target.exists():
             if not target.is_file():
                 raise ValueError(f"patch target is not a regular file: {normalized}")
@@ -184,6 +201,18 @@ def apply_patch_proposal(
             mode = 0o600
         prepared.append((target, change.content, previous, mode))
 
+    if audit is not None:
+        verification = audit.verify()
+        if not verification.valid:
+            raise ValueError(f"patch audit log failed verification: {verification.error}")
+        audit.record(
+            "patch_apply_started",
+            proposal_id=proposal.proposal_id,
+            project_id=proposal.project_id,
+            task_id=proposal.task_id,
+            files=len(prepared),
+            paths=[target.relative_to(root).as_posix() for target, _, _, _ in prepared],
+        )
     written: list[tuple[Path, str | None, int]] = []
     try:
         for target, new_content, previous, mode in prepared:
