@@ -182,7 +182,7 @@ jobs:
           BRANCH: ${{ steps.commit.outputs.branch }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
         run: |
-          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main
+          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$GITHUB_SHA"
           gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
           gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
 
