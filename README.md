@@ -520,3 +520,11 @@ A missing or mis-scoped token should fail before target checkout. A successful
 credential preflight does not itself prove that GitHub accepted all write
 operations; verify the complete flow with a disposable test proposal before
 using real project changes.
+
+
+The ChatGPT Bridge enables the workforce hash-chain audit automatically.
+Its execution log is stored under the private
+`.blue-ant-workspaces/<command-id>/` directory, outside uploaded report
+artifacts. The bridge verifies the log before publishing its result and
+includes the verification status, record count, and final hash in the JSON
+audit report. A failed verification stops the bridge run.

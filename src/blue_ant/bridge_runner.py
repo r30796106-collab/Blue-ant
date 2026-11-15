@@ -39,6 +39,7 @@ def run_bridge_command(
         registry,
         max_workers=min(4, command["max_cycles"]),
         snapshot_sources=command["snapshot_sources"],
+        audit_path=workspace_root / "workforce-audit.jsonl",
     )
 
     roles = [SubBotRole(role) for role in command["roles"][: command["max_cycles"]]]
@@ -51,6 +52,9 @@ def run_bridge_command(
         for index, role in enumerate(roles, start=1)
     ]
     results = workforce.run(assignments)
+    audit_verification = workforce.audit.verify() if workforce.audit is not None else None
+    if audit_verification is None or not audit_verification.valid:
+        raise ValueError("workforce execution audit failed verification")
     by_task = {result.task_id: result for result in results}
     cycles = []
     for assignment in assignments:
@@ -83,6 +87,11 @@ def run_bridge_command(
         "cycles": cycles,
         "execution_mode": "parallel_read_only_specialists",
         "workspace_mode": "bounded_source_snapshot" if command["snapshot_sources"] else "read_only_source_reference",
+        "execution_audit": {
+            "valid": audit_verification.valid,
+            "records": audit_verification.records,
+            "last_hash": audit_verification.last_hash,
+        },
         "limitations": [
             "All selected fixed specialists run concurrently; task context is metadata only.",
             "Workers inspect repository text and do not execute target code or tests.",
