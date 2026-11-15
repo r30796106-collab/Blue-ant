@@ -1,7 +1,9 @@
-"""Build a hash-checked patch proposal for one reviewed plan task.
+"""Build bounded hash-checked patch proposals for reviewed plan tasks.
 
-This module packages externally supplied file content; it does not generate code,
-write to the target workspace, execute commands, or approve/apply a proposal.
+The builder packages externally supplied replacement text only. It never
+generates code, writes to the target workspace, executes commands, or approves
+or applies a proposal. A task may explicitly authorize one path (legacy) or a
+small, exact allowlist of existing paths (multi-file mode).
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ from .patches import FileChange, PatchProposal, sha256_text
 
 
 _MAX_CONTENT_BYTES = 2_000_000
+_MAX_FILES = 10
 
 
 def _safe_task_path(raw: Any) -> PurePosixPath:
@@ -27,13 +30,30 @@ def _safe_task_path(raw: Any) -> PurePosixPath:
     return path
 
 
+def _task_paths(task: dict[str, Any]) -> tuple[PurePosixPath, ...]:
+    raw_paths = task.get("paths")
+    if raw_paths is None:
+        raw_paths = [task.get("path")]
+    if not isinstance(raw_paths, list) or not 1 <= len(raw_paths) <= _MAX_FILES:
+        raise ValueError(f"task paths must contain 1–{_MAX_FILES} explicitly allowed paths")
+    paths = tuple(_safe_task_path(raw) for raw in raw_paths)
+    normalized = [path.as_posix() for path in paths]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("task paths must be unique")
+    if "path" in task and task["path"] not in (None, ""):
+        legacy = _safe_task_path(task["path"])
+        if legacy not in paths:
+            raise ValueError("legacy task path must be included in the explicit paths allowlist")
+    return paths
+
+
 def build_patch_proposal(
     workspace: str | Path,
     development_plan: dict[str, Any],
     task_id: str,
     changes: list[dict[str, Any]],
 ) -> PatchProposal:
-    """Package one task's exact existing file into a hash-checked proposal."""
+    """Package a task's exact existing file allowlist into a hash-checked proposal."""
     if not isinstance(development_plan, dict) or development_plan.get("schema_version") != 1:
         raise ValueError("development plan must use schema_version 1")
     project_id = development_plan.get("project_id")
@@ -57,49 +77,59 @@ def build_patch_proposal(
         raise ValueError("task must require human review")
     if task.get("kind") != "audit_finding_review" or task.get("role") == "safety_auditor":
         raise PermissionError("this task type is not eligible for a patch proposal")
-    task_path = _safe_task_path(task.get("path"))
-
-    if not isinstance(changes, list) or len(changes) != 1:
-        raise ValueError("exactly one file change is allowed for a single-path plan task")
-    change = changes[0]
-    if not isinstance(change, dict) or set(change) != {"path", "content"}:
-        raise ValueError("each proposed change must contain exactly path and content")
-    proposed_path = _safe_task_path(change["path"])
-    if proposed_path != task_path:
-        raise ValueError("proposed path must exactly match the reviewed plan task path")
-    content = change["content"]
-    if not isinstance(content, str):
-        raise ValueError("proposed file content must be text")
-    if len(content.encode("utf-8")) > _MAX_CONTENT_BYTES:
-        raise ValueError("proposed content exceeds 2 MB")
+    allowed_paths = _task_paths(task)
+    if not isinstance(changes, list) or len(changes) != len(allowed_paths):
+        raise ValueError("proposal must contain exactly one change for every explicitly allowed task path")
+    by_path: dict[str, dict[str, Any]] = {}
+    for change in changes:
+        if not isinstance(change, dict) or set(change) != {"path", "content"}:
+            raise ValueError("each proposed change must contain exactly path and content")
+        proposed_path = _safe_task_path(change["path"]).as_posix()
+        if proposed_path in by_path:
+            raise ValueError("duplicate proposed file path")
+        if proposed_path not in {path.as_posix() for path in allowed_paths}:
+            raise ValueError("proposed path is outside the reviewed task paths allowlist")
+        if not isinstance(change["content"], str):
+            raise ValueError("proposed file content must be text")
+        by_path[proposed_path] = change
+    expected_order = [path.as_posix() for path in allowed_paths]
+    if set(by_path) != set(expected_order):
+        raise ValueError("proposal is missing one or more explicitly allowed task paths")
+    total_bytes = sum(len(by_path[path]["content"].encode("utf-8")) for path in expected_order)
+    if total_bytes > _MAX_CONTENT_BYTES:
+        raise ValueError("combined proposed content exceeds 2 MB")
 
     root = Path(workspace).resolve(strict=True)
     if not root.is_dir():
         raise NotADirectoryError(str(root))
-    target = root.joinpath(*task_path.parts)
-    current = root
-    for part in task_path.parts[:-1]:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError("symlinked parent directories are not allowed")
-        if current.exists() and not current.is_dir():
-            raise ValueError("task path parent is not a directory")
-    if target.is_symlink() or not target.exists() or not target.is_file():
-        raise ValueError("task path must identify an existing regular file")
-    try:
-        target.resolve(strict=True).relative_to(root)
-    except ValueError as exc:
-        raise ValueError("task path escapes the workspace") from exc
-    current_content = target.read_text(encoding="utf-8")
-    expected = sha256_text(current_content)
+    file_changes: list[FileChange] = []
+    canonical_changes = []
+    for relative_name in expected_order:
+        relative = _safe_task_path(relative_name)
+        target = root.joinpath(*relative.parts)
+        current = root
+        for part in relative.parts[:-1]:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError("symlinked parent directories are not allowed")
+            if current.exists() and not current.is_dir():
+                raise ValueError("task path parent is not a directory")
+        if target.is_symlink() or not target.exists() or not target.is_file():
+            raise ValueError("every task path must identify an existing regular file")
+        try:
+            target.resolve(strict=True).relative_to(root)
+        except ValueError as exc:
+            raise ValueError("task path escapes the workspace") from exc
+        content = by_path[relative_name]["content"]
+        expected = sha256_text(target.read_text(encoding="utf-8"))
+        file_changes.append(FileChange(path=relative_name, content=content, expected_sha256=expected))
+        canonical_changes.append({"path": relative_name, "expected_sha256": expected, "content": content})
 
     canonical = {
         "plan_id": plan_id,
         "task_id": task_id,
         "project_id": project_id,
-        "path": task_path.as_posix(),
-        "expected_sha256": expected,
-        "content": content,
+        "changes": canonical_changes,
     }
     proposal_id = "proposal-" + hashlib.sha256(
         json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -108,11 +138,7 @@ def build_patch_proposal(
         proposal_id=proposal_id,
         project_id=project_id,
         task_id=task_id,
-        changes=(FileChange(
-            path=task_path.as_posix(),
-            content=content,
-            expected_sha256=expected,
-        ),),
+        changes=tuple(file_changes),
     )
 
 
