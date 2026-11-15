@@ -10,7 +10,7 @@ from typing import Iterable
 from .audit import AuditLog
 from .projects import ProjectRegistry
 from .resources import ResourcePolicy, ResourceSnapshot
-from .subbots import Finding, SubBotFactory, SubBotRole
+from .subbots import Finding, SubBot, SubBotFactory, SubBotRole
 from .workspace_snapshot import create_workspace_snapshot
 
 
