@@ -115,6 +115,13 @@ jobs:
           cp instruction/proposal.json artifacts/proposal.json
           printf '%s\n' "$APPLY_APPROVED" > artifacts/applied.txt
 
+      - name: Retain patch audit trail
+        if: always()
+        run: |
+          mkdir -p artifacts
+          if [ -f workspace/.blue-ant/patch-audit.jsonl ]; then
+            cp workspace/.blue-ant/patch-audit.jsonl artifacts/patch-audit.jsonl
+          fi
       - name: Upload patch result
         uses: actions/upload-artifact@v4
         with:
