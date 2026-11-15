@@ -275,3 +275,35 @@ A controller can submit a structured patch proposal through a GitHub issue title
 - The result is posted back to the controlling issue.
 
 Only issues opened by `r30796106-collab` trigger this worker, and only public repositories under that account are accepted. The workflow has read-only repository permissions, does not persist checkout credentials, and never commits, pushes, opens a PR, or merges. Even an approved apply affects only the temporary runner checkout. It does not execute target project code or tests.
+
+
+## Multi-repository approved coding worker
+
+The issue-driven coding worker accepts an optional `target_repository` field. If omitted, it targets Blue Ant itself (backward compatible). If supplied, the value must name a public repository owned by `r30796106-collab`. The worker checks out that repository/ref, applies the same explicitly approved hash-checked patch, and opens a PR in that target repository. It never merges.
+
+Same-repository work uses the workflow's narrowly scoped `GITHUB_TOKEN`. Cross-repository writes require a repository Actions secret named `BLUE_ANT_WORKER_TOKEN` containing a fine-grained token limited to the intended target repositories, with **Contents: Read and write** and **Pull requests: Read and write** permissions. Do not use a personal account-wide token. Without this secret, cross-repository instructions fail before checkout or writes.
+
+Example issue body (all fields are required except `target_repository`):
+
+```json
+{
+  "target_repository": "r30796106-collab/ELON",
+  "target_ref": "master",
+  "project_id": "elon",
+  "proposal": {
+    "proposal_id": "elon-change-001",
+    "project_id": "elon",
+    "task_id": "update-module",
+    "changes": [
+      {
+        "path": "README.md",
+        "content": "Complete replacement file contents\\n",
+        "expected_sha256": "replace-with-current-lowercase-sha256"
+      }
+    ]
+  },
+  "apply_approved": true
+}
+```
+
+After opening the target PR, Blue Ant dispatches its own test suite and the read-only specialist review against the target repository/ref. The Blue Ant test suite verifies Blue Ant's worker code; the specialist report audits the target repository and does not execute its tests. Target-project test execution remains a separate CI capability and is not claimed by this workflow. Private repositories are not supported by this workflow.
