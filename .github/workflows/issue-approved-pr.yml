@@ -153,6 +153,14 @@ jobs:
             exit 1
           fi
 
+      - name: Upload approved patch audit trail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-patch-audit-${{ github.event.issue.number }}
+          path: target/.blue-ant/patch-audit.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Create branch and commit
         id: commit
         env:
@@ -184,6 +192,7 @@ jobs:
               "- Project: " + os.environ["PROJECT_ID"],
               "- Source instruction: #" + os.environ["ISSUE_NUMBER"],
               "- Patch was applied only after explicit human approval.",
+              "- The hash-chained patch audit log is retained as a workflow artifact for 14 days.",
               "- Review the complete diff and wait for required CI checks before merging.",
               "",
               "This workflow does not merge the pull request."
