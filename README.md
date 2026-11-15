@@ -135,7 +135,7 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 1. Master controller and project/task registry.
 2. Isolated project wings: ELON, Trading, Animation, FISHERMAN, and shared QA/Optimization.
 3. Bounded worker templates; no uncontrolled self-replication.
-4. Dependency-aware scheduler with bounded concurrency and retries.
+4. Dependency-aware scheduler with hard limits of 16 workers, 256 tasks per run, and 10 attempts per task.
 5. Separate workspaces/branches to prevent conflicting writes.
 6. Deny-by-default policy gateway and human approval for high-impact actions.
 7. Test-backed verification and append-only audit events.
