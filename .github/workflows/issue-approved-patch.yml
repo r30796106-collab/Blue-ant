@@ -46,8 +46,8 @@ jobs:
           if proposal["project_id"] != project:
               raise SystemExit("Proposal project_id must match instruction project_id")
           changes = proposal["changes"]
-          if not isinstance(changes, list) or not changes or len(changes) > 50:
-              raise SystemExit("Proposal must contain 1–50 changes")
+          if not isinstance(changes, list) or not changes or len(changes) > 10:
+              raise SystemExit("Proposal must contain 1–10 changes")
           total = 0
           for change in changes:
               if not isinstance(change, dict) or set(change) != {"path", "content", "expected_sha256"}:
