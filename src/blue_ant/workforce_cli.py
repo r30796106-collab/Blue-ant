@@ -24,7 +24,9 @@ def main() -> int:
     parser.add_argument("--reserve-memory-mb", type=int, default=512, help="memory to reserve in MiB (default: 512)")
     parser.add_argument("--memory-per-worker-mb", type=int, default=256, help="memory budget per worker in MiB (default: 256)")
     parser.add_argument("--snapshot-sources", action="store_true",
-                        help="copy each project into a bounded, private task workspace before auditing")
+                        help="copy project sources into bounded, private workspace snapshots before auditing")
+    parser.add_argument("--shared-snapshot-sources", action="store_true",
+                        help="copy once per project and reuse the snapshot across read-only workers; requires --snapshot-sources")
     parser.add_argument("--audit-log", help="append hash-chained workforce events to this JSONL file")
     parser.add_argument("--output", default="blue-ant-workforce-report.json")
     args = parser.parse_args()
@@ -66,6 +68,7 @@ def main() -> int:
             registry,
             max_workers=args.max_workers,
             snapshot_sources=args.snapshot_sources,
+            shared_snapshot_sources=args.shared_snapshot_sources,
             resource_policy=resource_policy,
             resource_snapshot=resource_snapshot,
             audit_path=args.audit_log,
@@ -113,7 +116,7 @@ def main() -> int:
             } for item in results],
             "limitations": [
                 "Built-in workers are read-only auditors; they do not write or execute project code.",
-                "Each assignment has a separate task workspace; snapshot mode copies bounded source files into it.",
+                "Each assignment has a separate task workspace; shared-snapshot mode reuses one bounded source copy per project.",
                 "Snapshots exclude common generated directories and credential-like files, reject symlinks, and are not OS sandboxes.",
                 "Workspace directories are not an operating-system security sandbox.",
                 "Security findings are heuristic and require human review.",
