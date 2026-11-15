@@ -273,6 +273,11 @@ reviewed the paths and contents, apply explicitly:
 blue-ant-patch --workspace /path/to/disposable/workspace --proposal proposal.json --approve
 ```
 
+When `--approve` is used, the CLI writes a hash-chained audit trail to
+`<workspace>/.blue-ant/patch-audit.jsonl` by default. Override it with
+`--audit-log PATH`. The CLI verifies the chain before and after applying;
+if the log is invalid, it refuses to apply the proposal.
+
 This CLI does not execute project code, run tests, create Git branches, or push
 to GitHub. Verify applied changes in a separate CI job before proposing a merge.
 
