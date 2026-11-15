@@ -92,6 +92,11 @@ def test_runner_uses_isolated_snapshot_when_requested(tmp_path):
     assert result["workers_completed"] == 1
     audit = json.loads((tmp_path / "out" / "bridge-v3-test-audit.json").read_text())
     assert audit["workspace_mode"] == "bounded_source_snapshot"
+    assert audit["execution_audit"]["valid"] is True
+    assert audit["execution_audit"]["records"] == 8
+    audit_path = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "workforce-audit.jsonl"
+    assert audit_path.is_file()
+    assert not (tmp_path / "out" / "workforce-audit.jsonl").exists()
     task_workspace = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "demo" / "tasks" / "cycle-1-repo-analyst"
     assert (task_workspace / "README.md").is_file()
     assert not (task_workspace / ".env").exists()
