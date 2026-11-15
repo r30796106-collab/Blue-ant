@@ -61,3 +61,22 @@ def test_load_rejects_oversized_command(tmp_path):
     source.write_text(json.dumps(valid_command()) + (" " * 16_385), encoding="utf-8")
     with pytest.raises(ValueError, match="16 KiB"):
         load_bridge_command(source)
+
+
+
+def test_snapshot_sources_is_optional_and_defaults_to_false():
+    command = valid_command()
+    result = validate_bridge_command(command)
+    assert result["snapshot_sources"] is False
+
+    command["snapshot_sources"] = True
+    result = validate_bridge_command(command)
+    assert result["snapshot_sources"] is True
+
+
+@pytest.mark.parametrize("value", ["true", 1, None, [], {}])
+def test_rejects_non_boolean_snapshot_sources(value):
+    command = valid_command()
+    command["snapshot_sources"] = value
+    with pytest.raises(ValueError, match="snapshot_sources"):
+        validate_bridge_command(command)
