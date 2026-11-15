@@ -317,3 +317,12 @@ The blue-ant-plan command combines a bounded audit-loop JSON report with an opti
 The generator validates report versions, project identity, approved specialist roles, finding severity/path fields, target owner/ref, and the supported test profile. It converts findings and failed test status into bounded review tasks. A passing test report is tied to its exact target repository ref.
 
 Safety boundary: plans contain recommendations only. They never contain patch contents or executable commands; apply_approved is always false and patch_proposal is always null. A human must verify findings, prepare/review a separate hash-checked patch proposal, and explicitly approve that proposal through the existing coding worker. Safety-auditor findings are always routed to human security review rather than automatic patch generation.
+## Controlled patch-proposal builder
+
+The blue-ant-propose command packages externally supplied replacement content for exactly one eligible development-plan task. It reads the target workspace, verifies that the task names one existing regular file, requires the proposed path to match that exact path, and calculates the current SHA-256 itself.
+
+    blue-ant-propose --workspace ./target --plan development-plan.json --task-id review-finding-1 --change change.json --output proposal.json
+
+The change JSON contains exactly path and content. The output uses the existing strict patch-proposal schema and can be submitted to the existing issue-approved PR worker for explicit human approval.
+
+Safety boundary: this builder never writes to the target workspace, creates files, generates code, runs commands, or approves/applies patches. It rejects safety-review, informational, test-result, missing-file, symlinked, and multi-file tasks. Only a human-reviewed audit finding tied to one concrete existing file is eligible. The target repository remains unchanged while the proposal is built.
