@@ -127,7 +127,7 @@ class ProjectRegistry:
             os.chmod(temporary_name, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 json.dump(payload, stream, indent=2, ensure_ascii=False)
-                stream.write("\\n")
+                stream.write("\n")
                 stream.flush()
                 os.fsync(stream.fileno())
             if path.is_symlink():
