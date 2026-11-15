@@ -4,7 +4,7 @@ Blue Ant is an independent, resource-aware multi-project workforce for coordinat
 
 ## Current milestone
 
-The deterministic core provides a bounded task scheduler, deny-by-default action policy, append-only audit writer, resource-capacity policy, a read-only sub-bot fleet, and an explicit project registry with isolated workspace paths.
+The deterministic core provides a bounded task scheduler, deny-by-default action policy, tamper-evident append-only JSONL audit log with hash-chain verification, resource-capacity policy, a read-only sub-bot fleet, and an explicit project registry with isolated workspace paths.
 
 ## First sub-bot fleet
 
@@ -183,6 +183,31 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 5. Separate workspaces/branches to prevent conflicting writes.
 6. Deny-by-default policy gateway and human approval for high-impact actions.
 7. Test-backed verification and append-only audit events.
+
+
+## Tamper-evident audit log
+
+The `AuditLog` appends JSONL events linked by SHA-256 hashes. Each record
+contains the previous record hash and its own digest. `verify()` checks the
+entire chain; POSIX file locks serialize independent writer instances and
+processes. The writer rejects symlinked paths, reserves chain metadata, and
+uses owner-only file permissions for new logs.
+
+```python
+from blue_ant import AuditLog
+
+audit = AuditLog(".blue-ant/audit.jsonl")
+audit.record("patch_proposal_approved", proposal_id="change-001")
+result = audit.verify()
+if not result.valid:
+    raise RuntimeError(result.error)
+```
+
+This detects modified, missing, reordered, or malformed records when checked
+against the existing chain. It is not a digital signature or external
+tamper-proof storage: an attacker able to rewrite the entire log can rebuild
+the chain. Back up or externally anchor important audit hashes.
+
 
 ## Safety boundaries
 
