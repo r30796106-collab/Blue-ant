@@ -1,4 +1,4 @@
-"""Validate and stage up to four independent, human-approved patch tasks."""
+""""Validate and stage up to four independent, human-approved patch tasks."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _safe_path(value: Any) -> str:
-    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
+    if not isinstance(value, str) or not value or "\\x00" in value or "\\\\" in value:
         raise ValueError("patch paths must be non-empty POSIX relative paths")
     path = PurePosixPath(value)
     if (path.is_absolute() or any(part in {"", ".", ".."} for part in value.split("/"))
@@ -121,20 +121,45 @@ def validate_bundle(bundle: Any) -> dict[str, Any]:
 
 
 def stage_bundle(bundle: Any, output_dir: str | Path) -> dict[str, Any]:
-    """Write one validated proposal per task into separate task directories."""
+    """Stage proposals without following symlinks or overwriting prior data.
+
+    The destination is a generated-artifact directory: an existing task
+    directory or output file is treated as a conflict, never overwritten.
+    """
     validated = validate_bundle(bundle)
     root = Path(output_dir)
+    if root.is_symlink():
+        raise ValueError("staging output directory must not be a symlink")
     root.mkdir(parents=True, exist_ok=True)
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("staging output directory must be a real directory")
+
+    metadata_path = root / "metadata.json"
+    if metadata_path.is_symlink() or metadata_path.exists():
+        raise FileExistsError(f"staging output already exists: {metadata_path}")
+
+    task_destinations = []
     for task in validated["tasks"]:
         task_dir = root / task["task_id"]
+        proposal_path = task_dir / "proposal.json"
+        if task_dir.is_symlink():
+            raise ValueError(f"staging task directory must not be a symlink: {task_dir}")
+        if task_dir.exists() and not task_dir.is_dir():
+            raise ValueError(f"staging task path is not a directory: {task_dir}")
+        if proposal_path.is_symlink() or proposal_path.exists():
+            raise FileExistsError(f"staged proposal already exists: {proposal_path}")
+        task_destinations.append((task, task_dir, proposal_path))
+
+    # Preflight every destination before writing the first proposal.
+    for task, task_dir, proposal_path in task_destinations:
         task_dir.mkdir(mode=0o700, exist_ok=True)
-        (task_dir / "proposal.json").write_text(
-            json.dumps(task["proposal"], indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        with proposal_path.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(task["proposal"], indent=2, ensure_ascii=False) + "\\n")
+
     metadata = {key: validated[key] for key in ("schema_version", "target_repository", "target_ref", "project_id", "apply_approved")}
     metadata["tasks"] = [{"task_id": task["task_id"]} for task in validated["tasks"]]
-    (root / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    with metadata_path.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(metadata, indent=2) + "\\n")
     return metadata
 
 
