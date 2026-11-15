@@ -46,6 +46,18 @@ registry.register("elon", "/path/to/ELON")
 
 The versioned registry is written atomically with owner-only file permissions. On startup, stored project IDs and source directories are revalidated; missing, invalid, or symlinked registry/source paths are rejected. The file stores machine-local absolute source paths, so keep it local and do not commit it or share it between machines.
 
+The `blue-ant-project` command provides the same operations from a terminal:
+
+```bash
+blue-ant-project register elon /path/to/ELON
+blue-ant-project register trading /path/to/ai_crypto_bot
+blue-ant-project list
+blue-ant-project workspace elon
+blue-ant-project workspace elon --create
+```
+
+Use `--registry PATH` and `--workspace-root PATH` before the subcommand to override the defaults. A workspace lookup is read-only; the directory is created only when `--create` is supplied.
+
 ### Run locally
 
 Requires Python 3.12 or newer.
