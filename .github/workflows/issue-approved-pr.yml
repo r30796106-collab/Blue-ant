@@ -99,7 +99,7 @@ jobs:
         run: |
           blue-ant-patch --workspace . --proposal "$RUNNER_TEMP/blue-ant-instruction/proposal.json" --approve
           python - <<'PY'
-          import json
+          import json, os
           proposal = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "proposal.json"), encoding="utf-8"))
           with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "changed-paths.nul"), "wb") as f:
               for item in proposal["changes"]:
