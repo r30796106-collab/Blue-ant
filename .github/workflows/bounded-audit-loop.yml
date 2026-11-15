@@ -41,7 +41,7 @@ jobs:
           if not isinstance(cycles, int) or isinstance(cycles, bool) or not 1 <= cycles <= len(roles):
               raise SystemExit("max_cycles must be between 1 and the number of selected roles")
           task = data["task"]
-          if not isinstance(task, str) or not task.strip() or len(task) > 1000:
+          if not isinstance(task, str) or not task.strip() or len(task) > 1000 or "\\n" in task or "\\r" in task:
               raise SystemExit("task context must contain 1–1000 characters")
           os.makedirs("instruction", exist_ok=True)
           with open("instruction/loop.json", "w", encoding="utf-8") as stream:
