@@ -199,7 +199,7 @@ jobs:
                   'Independently verify the finding. If confirmed, replace the empty replacement_content value below with the complete content for exactly this existing file, then set apply_approved to true. Save the issue edit as the repository owner. No worker runs on issue creation; it only runs after an owner-authored edit with explicit approval.', '',
                   'Safety-auditor findings are never eligible for this route.', '',
                   '### Structured instruction', '', '```json', JSON.stringify(taskPayload, null, 2), '```'
-                ].join('\\n');
+                ].join('\n');
                 await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title: '[blue-ant-plan-pr] ' + task.task_id + ' — ' + task.path, body: taskBody });
               }
             }
