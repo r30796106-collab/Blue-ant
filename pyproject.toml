@@ -19,6 +19,7 @@ dev = ["pytest>=8.0"]
 blue-ant-review = "blue_ant.subbot_report:main"
 blue-ant-workforce = "blue_ant.workforce_cli:main"
 blue-ant-patch = "blue_ant.patch_cli:main"
+blue-ant-audit-loop = "blue_ant.audit_loop_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
