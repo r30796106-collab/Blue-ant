@@ -88,7 +88,16 @@ class Workforce:
             raise ValueError("at least one work assignment is required")
         if len(jobs) > self.max_tasks:
             raise ValueError("assignments exceed configured max_tasks")
-        self._record("workforce_started", assignments=len(jobs), max_workers=self.max_workers, snapshot_sources=self.snapshot_sources)
+        if self.audit is not None:
+            verification = self.audit.verify()
+            if not verification.valid:
+                raise ValueError(f"existing audit log failed verification: {verification.error}")
+        self._record(
+            "workforce_started",
+            assignments=len(jobs),
+            max_workers=self.max_workers,
+            snapshot_sources=self.snapshot_sources,
+        )
         ids: set[str] = set()
         prepared: list[tuple[WorkAssignment, Path, Path, Path]] = []
         for job in jobs:
@@ -177,6 +186,10 @@ class Workforce:
             failed=sum(result.error is not None for result in results),
             findings=sum(len(result.findings) for result in results),
         )
+        if self.audit is not None:
+            verification = self.audit.verify()
+            if not verification.valid:
+                raise RuntimeError(f"workforce audit log failed verification: {verification.error}")
         return tuple(sorted(results, key=lambda result: (result.project_id, result.task_id)))
 
     def _record(self, event: str, **details: object) -> None:
