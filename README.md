@@ -528,6 +528,13 @@ credential preflight does not itself prove that GitHub accepted all write
 operations; verify the complete flow with a disposable test proposal before
 using real project changes.
 
+Approved patch workflows retain their hash-chained audit trail separately from
+the target repository: issue-driven and plan-linked PR workers upload
+`target/.blue-ant/patch-audit.jsonl` as a 14-day artifact, while the disposable
+patch-review worker copies the log into its existing result artifact. Logs
+contain event metadata and changed paths, not patch contents; they are never
+staged or committed to the target repository.
+
 Before dispatching parallel workers, the workflow resolves the approved target
 ref once and pins every isolated worker to that exact commit SHA. Each worker
 checks that the target branch still points to the pinned commit before applying
