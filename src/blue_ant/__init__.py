@@ -7,6 +7,7 @@ from .subbots import Finding, SubBot, SubBotFactory, SubBotRole, run_fleet
 from .projects import ProjectRegistry, ProjectSpec
 from .workforce import WorkAssignment, Workforce, WorkResult
 from .patches import FileChange, PatchProposal, PatchResult, apply_patch_proposal, sha256_text
+from .controller import FeedbackLoop, LoopInstruction, LoopObservation, LoopReport
 
 __all__ = [
     "Scheduler", "TaskResult", "TaskSpec", "TaskStatus",
@@ -15,4 +16,5 @@ __all__ = [
     "ProjectRegistry", "ProjectSpec",
     "WorkAssignment", "Workforce", "WorkResult",
     "FileChange", "PatchProposal", "PatchResult", "apply_patch_proposal", "sha256_text",
+    "FeedbackLoop", "LoopInstruction", "LoopObservation", "LoopReport",
 ]
