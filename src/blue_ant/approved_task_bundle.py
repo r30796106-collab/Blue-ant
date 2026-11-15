@@ -154,12 +154,12 @@ def stage_bundle(bundle: Any, output_dir: str | Path) -> dict[str, Any]:
     for task, task_dir, proposal_path in task_destinations:
         task_dir.mkdir(mode=0o700, exist_ok=True)
         with proposal_path.open("x", encoding="utf-8") as stream:
-            stream.write(json.dumps(task["proposal"], indent=2, ensure_ascii=False) + "\\n")
+            stream.write(json.dumps(task["proposal"], indent=2, ensure_ascii=False) + "\n")
 
     metadata = {key: validated[key] for key in ("schema_version", "target_repository", "target_ref", "project_id", "apply_approved")}
     metadata["tasks"] = [{"task_id": task["task_id"]} for task in validated["tasks"]]
     with metadata_path.open("x", encoding="utf-8") as stream:
-        stream.write(json.dumps(metadata, indent=2) + "\\n")
+        stream.write(json.dumps(metadata, indent=2) + "\n")
     return metadata
 
 
