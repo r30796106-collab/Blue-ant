@@ -528,3 +528,9 @@ Its execution log is stored under the private
 artifacts. The bridge verifies the log before publishing its result and
 includes the verification status, record count, and final hash in the JSON
 audit report. A failed verification stops the bridge run.
+
+
+Audit failure events record only the exception class, not the exception message.
+This keeps arbitrary error details (which can contain local paths or secrets)
+out of the persistent audit trail. The in-memory `WorkResult.error` remains
+available to the caller for controlled diagnostics.
