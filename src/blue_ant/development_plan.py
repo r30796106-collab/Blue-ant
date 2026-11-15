@@ -60,6 +60,8 @@ def generate_development_plan(
     test_report: dict[str, Any] | None = None,
     *,
     project_id: str,
+    target_repository: str | None = None,
+    target_ref: str | None = None,
 ) -> DevelopmentPlan:
     """Convert bounded structured observations into non-executable review tasks."""
     project = _text(project_id, "project_id", max_length=48)
@@ -134,17 +136,29 @@ def generate_development_plan(
                 recommended_action=action,
             ))
 
-    target_repository = None
-    target_ref = None
-    if test_report is not None:
-        if not isinstance(test_report, dict):
-            raise ValueError("test report must be a JSON object")
-        target_repository = _text(test_report.get("target_repository"), "target_repository", max_length=150)
-        target_ref = _text(test_report.get("target_ref"), "target_ref", max_length=200)
+    if (target_repository is None) != (target_ref is None):
+        raise ValueError("target_repository and target_ref must be provided together")
+    if target_repository is not None:
+        target_repository = _text(target_repository, "target_repository", max_length=150)
+        target_ref = _text(target_ref, "target_ref", max_length=200)
         if not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", target_repository):
             raise ValueError("target_repository is outside the configured owner scope")
         if (not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", target_ref)
-            or target_ref.startswith("-") or ".." in target_ref or "//" in target_ref
+            or target_ref.startswith("-") or ".." in target_ref.split("/")
+            or "//" in target_ref or target_ref.endswith(("/", "."))):
+            raise ValueError("target_ref is invalid")
+    if test_report is not None:
+        if not isinstance(test_report, dict):
+            raise ValueError("test report must be a JSON object")
+        report_repository = _text(test_report.get("target_repository"), "target_repository", max_length=150)
+        report_ref = _text(test_report.get("target_ref"), "target_ref", max_length=200)
+        if target_repository is not None and (report_repository != target_repository or report_ref != target_ref):
+            raise ValueError("test report target does not match requested repository/ref")
+        target_repository, target_ref = report_repository, report_ref
+        if not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", target_repository):
+            raise ValueError("target_repository is outside the configured owner scope")
+        if (not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", target_ref)
+            or target_ref.startswith("-") or ".." in target_ref.split("/") or "//" in target_ref
             or target_ref.endswith(("/", "."))):
             raise ValueError("target_ref is invalid")
         if test_report.get("test_profile") != "python-unittest":
