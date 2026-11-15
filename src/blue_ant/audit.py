@@ -43,7 +43,7 @@ class AuditLog:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "event": event,
         }
-        encoded = (json.dumps(payload, sort_keys=True, default=str) + "\\n").encode("utf-8")
+        encoded = (json.dumps(payload, sort_keys=True, default=str) + "\n").encode("utf-8")
 
         with self._lock:
             flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
