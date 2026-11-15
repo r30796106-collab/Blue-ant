@@ -273,11 +273,6 @@ reviewed the paths and contents, apply explicitly:
 blue-ant-patch --workspace /path/to/disposable/workspace --proposal proposal.json --approve
 ```
 
-When `--approve` is used, the CLI writes a hash-chained audit trail to
-`<workspace>/.blue-ant/patch-audit.jsonl` by default. Override it with
-`--audit-log PATH`. The CLI verifies the chain before and after applying;
-if the log is invalid, it refuses to apply the proposal.
-
 This CLI does not execute project code, run tests, create Git branches, or push
 to GitHub. Verify applied changes in a separate CI job before proposing a merge.
 
@@ -527,6 +522,13 @@ A missing or mis-scoped token should fail before target checkout. A successful
 credential preflight does not itself prove that GitHub accepted all write
 operations; verify the complete flow with a disposable test proposal before
 using real project changes.
+
+Before dispatching parallel workers, the workflow resolves the approved target
+ref once and pins every isolated worker to that exact commit SHA. Each worker
+checks that the target branch still points to the pinned commit before applying
+the proposal and checks again before opening its PR. If the branch moves during
+preparation, the worker fails closed instead of applying against a different
+baseline or opening a stale PR. The PR body records the pinned base SHA.
 
 
 The ChatGPT Bridge enables the workforce hash-chain audit automatically.
