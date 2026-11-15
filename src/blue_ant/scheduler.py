@@ -30,7 +30,12 @@ class Scheduler:
         self.policy = policy or Policy()
         self.audit = AuditLog(audit_path) if audit_path is not None else None
 
-    def run(self, tasks: Iterable[TaskSpec]) -> dict[str, TaskResult]:
+    def run(
+        self,
+        tasks: Iterable[TaskSpec],
+        *,
+        approved_actions: frozenset[str] = frozenset(),
+    ) -> dict[str, TaskResult]:
         task_list = list(tasks)
         by_id = {task.task_id: task for task in task_list}
         if len(by_id) != len(task_list):
@@ -39,7 +44,7 @@ class Scheduler:
             unknown = set(task.depends_on) - by_id.keys()
             if unknown:
                 raise ValueError(f"{task.task_id} has unknown dependencies: {sorted(unknown)}")
-            if not self.policy.check(task.action):
+            if not self.policy.check(task.action, approved_actions):
                 raise PermissionError(f"action not permitted without approval: {task.action}")
 
         self._check_cycles(by_id)
