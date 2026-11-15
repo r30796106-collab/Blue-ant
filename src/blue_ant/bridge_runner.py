@@ -30,7 +30,10 @@ def run_bridge_command(
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    registry = ProjectRegistry(output / "workspaces")
+    # Keep private source snapshots outside the artifact directory so the
+    # GitHub workflow uploads reports, not copied project source trees.
+    workspace_root = output.parent / ".blue-ant-workspaces" / command["command_id"]
+    registry = ProjectRegistry(workspace_root)
     registry.register(command["project_id"], target_path)
     workforce = Workforce(
         registry,
