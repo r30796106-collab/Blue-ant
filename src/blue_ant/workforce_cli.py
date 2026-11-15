@@ -101,6 +101,11 @@ def main() -> int:
                 } if resource_snapshot is not None and resource_policy is not None else None
             ),
             "workspace_mode": "bounded_source_snapshot" if args.snapshot_sources else "read_only_source_reference",
+            "snapshot_strategy": (
+                "shared_project" if args.shared_snapshot_sources
+                else "per_task" if args.snapshot_sources
+                else "source_reference"
+            ),
             "assignments": [{
                 "task_id": item.task_id,
                 "project_id": item.project_id,
