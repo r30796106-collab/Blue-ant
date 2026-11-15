@@ -208,6 +208,14 @@ jobs:
             exit 1
           fi
 
+      - name: Upload hash-chained patch audit trail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-ant-patch-audit-${{ github.event.issue.number }}-${{ matrix.task_id }}
+          path: target/.blue-ant/patch-audit.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Create task-specific branch and commit
         id: commit
         env:
@@ -290,6 +298,7 @@ jobs:
                 '- Isolated worker matrix: **' + result + '**',
                 '- Each task runs in its own GitHub runner/workspace and branch.',
                 '- Successful tasks open separate pull requests and trigger independent review/test workflows.',
+                '- Per-task patch audit logs are retained as workflow artifacts when patch application starts.',
                 '- No pull request is merged automatically.'
               ].join('\n')
             });
