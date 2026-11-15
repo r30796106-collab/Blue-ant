@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
+from blue_ant.audit import AuditLog
 from blue_ant.projects import ProjectRegistry
 from blue_ant.resources import ResourcePolicy, ResourceSnapshot
 from blue_ant.subbots import SubBotRole
@@ -165,3 +167,47 @@ def test_resource_policy_and_snapshot_must_be_provided_together(tmp_path: Path):
             ProjectRegistry(tmp_path / "workspaces"),
             resource_snapshot=ResourceSnapshot(cpu_count=2, available_memory_bytes=1_024),
         )
+
+
+
+def test_workforce_writes_and_verifies_hash_chained_audit_events(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    audit_path = tmp_path / "audit.jsonl"
+
+    results = Workforce(registry, max_workers=2, audit_path=audit_path).run([
+        WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("tests", "repo", SubBotRole.TEST_AUDITOR),
+    ])
+
+    assert len(results) == 2
+    audit = AuditLog(audit_path)
+    verification = audit.verify()
+    assert verification.valid is True
+    assert verification.records == 8
+    events = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert events[0]["event"] == "workforce_started"
+    assert events[-1]["event"] == "workforce_completed"
+    assert {event["event"] for event in events} >= {
+        "task_workspace_prepared", "worker_started", "worker_succeeded"
+    }
+
+
+def test_workforce_refuses_to_run_with_tampered_audit_log(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    audit_path = tmp_path / "audit.jsonl"
+    audit = AuditLog(audit_path)
+    audit.record("initial")
+    audit_path.write_text(
+        audit_path.read_text(encoding="utf-8").replace('"event": "initial"', '"event": "tampered"'),
+        encoding="utf-8",
+    )
+
+    workforce = Workforce(registry, audit_path=audit_path)
+    with pytest.raises(ValueError, match="failed verification"):
+        workforce.run([WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR)])
+
+    assert not (tmp_path / "workspaces" / "repo").exists()

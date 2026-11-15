@@ -93,10 +93,11 @@ blue-ant-workforce \
   --project animation=/path/to/StoryVerseAI \
   --roles repo_analyst,test_auditor,docs_auditor,safety_auditor \
   --max-workers 4 \
+  --audit-log .blue-ant/workforce-audit.jsonl \
   --output blue-ant-workforce-report.json
 ```
 
-Every project receives one task per selected role. Tasks across the same repository and different repositories share one bounded worker pool, so they can run concurrently without exceeding `--max-workers`. A worker failure is recorded per task and does not discard successful results from other tasks.
+Every project receives one task per selected role. Tasks across the same repository and different repositories share one bounded worker pool, so they can run concurrently without exceeding `--max-workers`. A worker failure is recorded per task and does not discard successful results from other tasks. When `--audit-log PATH` is supplied, the workforce records task preparation, worker start/success/failure, and run completion in the tamper-evident hash-chained JSONL log. The chain is verified before and after the run; a pre-existing invalid log stops execution. The report includes the verification status.
 
 By default, read-only specialists inspect the registered source directly. Add
 `--snapshot-sources` to copy each project into its own task workspace before

@@ -25,6 +25,7 @@ def main() -> int:
     parser.add_argument("--memory-per-worker-mb", type=int, default=256, help="memory budget per worker in MiB (default: 256)")
     parser.add_argument("--snapshot-sources", action="store_true",
                         help="copy each project into a bounded, private task workspace before auditing")
+    parser.add_argument("--audit-log", help="append hash-chained workforce events to this JSONL file")
     parser.add_argument("--output", default="blue-ant-workforce-report.json")
     args = parser.parse_args()
 
@@ -67,8 +68,10 @@ def main() -> int:
             snapshot_sources=args.snapshot_sources,
             resource_policy=resource_policy,
             resource_snapshot=resource_snapshot,
+            audit_path=args.audit_log,
         )
         results = workforce.run(assignments)
+        audit_verification = workforce.audit.verify() if workforce.audit is not None else None
         payload = {
             "schema_version": 1,
             "mode": "parallel_read_only_multi_project",
@@ -77,6 +80,15 @@ def main() -> int:
             "max_workers": args.max_workers,
             "requested_max_workers": workforce.requested_max_workers,
             "effective_max_workers": workforce.max_workers,
+            "audit_log": str(workforce.audit.path) if workforce.audit is not None else None,
+            "audit_verification": (
+                {
+                    "valid": audit_verification.valid,
+                    "records": audit_verification.records,
+                    "last_hash": audit_verification.last_hash,
+                    "error": audit_verification.error,
+                } if audit_verification is not None else None
+            ),
             "resource_snapshot": (
                 {
                     "cpu_count": resource_snapshot.cpu_count,

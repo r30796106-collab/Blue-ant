@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from .audit import AuditLog
 from .projects import ProjectRegistry
 from .resources import ResourcePolicy, ResourceSnapshot
 from .subbots import Finding, SubBotFactory, SubBotRole
@@ -54,6 +55,7 @@ class Workforce:
         snapshot_sources: bool = False,
         resource_policy: ResourcePolicy | None = None,
         resource_snapshot: ResourceSnapshot | None = None,
+        audit_path: str | Path | None = None,
     ) -> None:
         if not 1 <= max_workers <= 16:
             raise ValueError("max_workers must be between 1 and 16")
@@ -78,6 +80,7 @@ class Workforce:
         )
         self.max_tasks = max_tasks
         self.snapshot_sources = snapshot_sources
+        self.audit = AuditLog(audit_path) if audit_path is not None else None
 
     def run(self, assignments: Iterable[WorkAssignment]) -> tuple[WorkResult, ...]:
         jobs = tuple(assignments)
@@ -85,6 +88,16 @@ class Workforce:
             raise ValueError("at least one work assignment is required")
         if len(jobs) > self.max_tasks:
             raise ValueError("assignments exceed configured max_tasks")
+        if self.audit is not None:
+            verification = self.audit.verify()
+            if not verification.valid:
+                raise ValueError(f"existing audit log failed verification: {verification.error}")
+        self._record(
+            "workforce_started",
+            assignments=len(jobs),
+            max_workers=self.max_workers,
+            snapshot_sources=self.snapshot_sources,
+        )
         ids: set[str] = set()
         prepared: list[tuple[WorkAssignment, Path, Path, Path]] = []
         for job in jobs:
@@ -114,27 +127,49 @@ class Workforce:
             except ValueError as exc:
                 raise ValueError("task workspace escapes its tasks directory") from exc
 
+            snapshot_result = None
             if self.snapshot_sources:
                 if task_workspace.exists() and (
                     not task_workspace.is_dir() or any(task_workspace.iterdir())
                 ):
                     raise ValueError("snapshot task workspace must be absent or empty; refusing to overwrite")
-                scan_root = create_workspace_snapshot(project.source_root, task_workspace).workspace
+                snapshot_result = create_workspace_snapshot(project.source_root, task_workspace)
+                scan_root = snapshot_result.workspace
             else:
                 task_workspace.mkdir(mode=0o700, exist_ok=True)
                 if task_workspace.is_symlink() or not task_workspace.is_dir():
                     raise ValueError("task workspace is not a safe directory")
                 scan_root = project.source_root
 
+            self._record(
+                "task_workspace_prepared",
+                task_id=job.task_id,
+                project_id=job.project_id,
+                role=job.role.value,
+                workspace=str(task_workspace),
+                snapshot_files=snapshot_result.files_copied if snapshot_result else None,
+                snapshot_bytes=snapshot_result.bytes_copied if snapshot_result else None,
+            )
             prepared.append((job, project.source_root, task_workspace, scan_root))
 
         def execute(item: tuple[WorkAssignment, Path, Path, Path]) -> WorkResult:
             job, source_root, workspace, scan_root = item
             bot = SubBotFactory(max_bots=1).create_fleet([job.role])[0]
+            self._record(
+                "worker_started", task_id=job.task_id, project_id=job.project_id, role=job.role.value
+            )
             try:
                 findings = tuple(bot.run(scan_root))
+                self._record(
+                    "worker_succeeded", task_id=job.task_id, project_id=job.project_id,
+                    role=job.role.value, findings=len(findings),
+                )
                 return WorkResult(job.task_id, job.project_id, job.role.value, source_root, workspace, findings)
             except Exception as exc:
+                self._record(
+                    "worker_failed", task_id=job.task_id, project_id=job.project_id,
+                    role=job.role.value, error=f"{type(exc).__name__}: {exc}",
+                )
                 return WorkResult(
                     job.task_id, job.project_id, job.role.value, source_root, workspace, (),
                     f"{type(exc).__name__}: {exc}",
@@ -145,4 +180,18 @@ class Workforce:
             futures = [pool.submit(execute, item) for item in prepared]
             for future in as_completed(futures):
                 results.append(future.result())
+        self._record(
+            "workforce_completed",
+            assignments=len(results),
+            failed=sum(result.error is not None for result in results),
+            findings=sum(len(result.findings) for result in results),
+        )
+        if self.audit is not None:
+            verification = self.audit.verify()
+            if not verification.valid:
+                raise RuntimeError(f"workforce audit log failed verification: {verification.error}")
         return tuple(sorted(results, key=lambda result: (result.project_id, result.task_id)))
+
+    def _record(self, event: str, **details: object) -> None:
+        if self.audit is not None:
+            self.audit.record(event, **details)
