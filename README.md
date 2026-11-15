@@ -47,4 +47,4 @@ No third-party framework is considered adopted until its license, supported Pyth
 
 ## Status
 
-Repository bootstrap. No implementation or test results are claimed yet.
+Initial deterministic core and scheduler are implemented on the development branch. Unit tests and CI workflow are committed; execution results are pending GitHub Actions.
