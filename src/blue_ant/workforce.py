@@ -77,15 +77,21 @@ class Workforce:
                 raise ValueError("role must be an approved SubBotRole")
             project = self.registry.get(job.project_id)
             project_workspace = self.registry.workspace_for(job.project_id, create=True)
-            task_workspace = project_workspace / "tasks" / job.task_id
+            tasks_root = project_workspace / "tasks"
+            if tasks_root.is_symlink():
+                raise ValueError("tasks directory must not be a symlink")
+            tasks_root.mkdir(mode=0o700, exist_ok=True)
+            if tasks_root.is_symlink() or not tasks_root.is_dir():
+                raise ValueError("tasks directory is not a safe directory")
+            task_workspace = tasks_root / job.task_id
             if task_workspace.is_symlink():
                 raise ValueError("task workspace must not be a symlink")
             resolved = task_workspace.resolve(strict=False)
             try:
-                resolved.relative_to(project_workspace.resolve())
+                resolved.relative_to(tasks_root.resolve())
             except ValueError as exc:
-                raise ValueError("task workspace escapes project workspace") from exc
-            task_workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
+                raise ValueError("task workspace escapes its tasks directory") from exc
+            task_workspace.mkdir(mode=0o700, exist_ok=True)
             if task_workspace.is_symlink() or not task_workspace.is_dir():
                 raise ValueError("task workspace is not a safe directory")
             prepared.append((job, project.source_root, task_workspace))
