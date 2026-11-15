@@ -8,6 +8,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  actions: write
 
 jobs:
   propose-and-open-pr:
@@ -156,6 +157,14 @@ jobs:
             --head "$BRANCH" \
             --title "Blue Ant: approved patch for $PROJECT_ID" \
             --body-file "$RUNNER_TEMP/blue-ant-pr-body.md"
+
+      - name: Dispatch CI for the created PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.commit.outputs.branch }}
+        run: |
+          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$BRANCH"
+          gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$BRANCH"
       
       - name: Report result on instruction issue
         if: always()
