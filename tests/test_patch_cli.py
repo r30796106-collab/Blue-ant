@@ -1,5 +1,6 @@
 import json
 
+from blue_ant.audit import AuditLog
 from blue_ant.patch_cli import load_proposal, main
 from blue_ant.patches import sha256_text
 
@@ -47,6 +48,11 @@ def test_cli_requires_explicit_approval_and_applies(tmp_path, capsys):
     ]) == 0
     assert (workspace / "hello.txt").read_text(encoding="utf-8") == "new"
     assert "APPLIED: 1 file(s)" in capsys.readouterr().out
+    audit_path = workspace / ".blue-ant" / "patch-audit.jsonl"
+    verification = AuditLog(audit_path).verify()
+    assert verification.valid is True
+    assert verification.records == 2
+    assert "AUDIT VERIFIED: 2 record(s)" in capsys.readouterr().out
 
 
 def test_load_proposal_rejects_unknown_fields(tmp_path):
