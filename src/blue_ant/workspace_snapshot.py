@@ -183,6 +183,7 @@ def create_workspace_snapshot(
                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow,
                         0o600,
                     )
+                    copied_files.append(target)
                     copied_for_file = 0
                     while True:
                         chunk = os.read(source_fd, 1024 * 1024)
@@ -206,7 +207,6 @@ def create_workspace_snapshot(
                     if target_fd >= 0:
                         os.close(target_fd)
 
-                copied_files.append(target)
                 files_copied += 1
                 bytes_copied += copied_for_file
 
