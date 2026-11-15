@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .audit import AuditLog
 from .bridge import load_bridge_command
 from .bridge_controller import decision_to_dict, evaluate_bridge_result
 from .development_plan import generate_development_plan, plan_to_dict
@@ -35,10 +36,12 @@ def run_bridge_command(
     workspace_root = output.parent / ".blue-ant-workspaces" / command["command_id"]
     registry = ProjectRegistry(workspace_root)
     registry.register(command["project_id"], target_path)
+    execution_audit = AuditLog(workspace_root / "workforce-audit.jsonl")
     workforce = Workforce(
         registry,
         max_workers=min(4, command["max_cycles"]),
         snapshot_sources=command["snapshot_sources"],
+        audit_log=execution_audit,
     )
 
     roles = [SubBotRole(role) for role in command["roles"][: command["max_cycles"]]]
@@ -51,6 +54,9 @@ def run_bridge_command(
         for index, role in enumerate(roles, start=1)
     ]
     results = workforce.run(assignments)
+    audit_verification = execution_audit.verify()
+    if not audit_verification.valid:
+        raise ValueError("workforce execution audit failed verification: " + str(audit_verification.error))
     by_task = {result.task_id: result for result in results}
     cycles = []
     for assignment in assignments:
@@ -83,6 +89,11 @@ def run_bridge_command(
         "cycles": cycles,
         "execution_mode": "parallel_read_only_specialists",
         "workspace_mode": "bounded_source_snapshot" if command["snapshot_sources"] else "read_only_source_reference",
+        "execution_audit": {
+            "valid": audit_verification.valid,
+            "records": audit_verification.records,
+            "last_hash": audit_verification.last_hash,
+        },
         "limitations": [
             "All selected fixed specialists run concurrently; task context is metadata only.",
             "Workers inspect repository text and do not execute target code or tests.",
