@@ -94,3 +94,10 @@ def test_rejects_unrequested_role():
     ])
     with pytest.raises(ValueError, match="unrequested"):
         evaluate_bridge_result(value)
+
+
+def test_generated_command_id_stays_within_bridge_limit():
+    value = bundle()
+    value["command"]["command_id"] = "a" * 48
+    result = evaluate_bridge_result(value)
+    assert len(result.next_command["command_id"]) <= 48
