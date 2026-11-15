@@ -8,6 +8,7 @@ import re
 from typing import Iterable
 
 from .projects import ProjectRegistry
+from .resources import ResourcePolicy, ResourceSnapshot
 from .subbots import Finding, SubBotFactory, SubBotRole
 from .workspace_snapshot import create_workspace_snapshot
 
@@ -51,6 +52,8 @@ class Workforce:
         max_workers: int = 4,
         max_tasks: int = 64,
         snapshot_sources: bool = False,
+        resource_policy: ResourcePolicy | None = None,
+        resource_snapshot: ResourceSnapshot | None = None,
     ) -> None:
         if not 1 <= max_workers <= 16:
             raise ValueError("max_workers must be between 1 and 16")
@@ -58,8 +61,21 @@ class Workforce:
             raise ValueError("max_tasks must be between 1 and 256")
         if not isinstance(snapshot_sources, bool):
             raise ValueError("snapshot_sources must be a boolean")
+        if (resource_policy is None) != (resource_snapshot is None):
+            raise ValueError("resource_policy and resource_snapshot must be provided together")
+        if resource_policy is not None and not isinstance(resource_policy, ResourcePolicy):
+            raise ValueError("resource_policy must be a ResourcePolicy")
+        if resource_snapshot is not None and not isinstance(resource_snapshot, ResourceSnapshot):
+            raise ValueError("resource_snapshot must be a ResourceSnapshot")
         self.registry = registry
-        self.max_workers = max_workers
+        self.requested_max_workers = max_workers
+        self.resource_policy = resource_policy
+        self.resource_snapshot = resource_snapshot
+        self.max_workers = (
+            min(max_workers, resource_policy.worker_limit(resource_snapshot))
+            if resource_policy is not None and resource_snapshot is not None
+            else max_workers
+        )
         self.max_tasks = max_tasks
         self.snapshot_sources = snapshot_sources
 
