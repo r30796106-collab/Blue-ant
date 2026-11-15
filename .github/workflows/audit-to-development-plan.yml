@@ -183,3 +183,23 @@ jobs:
               issue_number: context.issue.number,
               body: body.slice(0, 65000)
             });
+            // Create one unapproved task issue for each eligible existing-file review.
+            // Safety findings and every other task kind remain human-only.
+            if (process.env.JOB_STATUS === 'success' && plan) {
+              for (const task of eligible) {
+                if (!task || typeof task.task_id !== 'string' || typeof task.path !== 'string' || !task.path ||
+                    task.path.startsWith('/') || task.path.split('/').includes('..') || task.path.includes('\\') || task.path.includes(String.fromCharCode(0))) continue;
+                const taskPayload = { target_repository: process.env.TARGET_REPOSITORY, target_ref: process.env.TARGET_REF, project_id: process.env.PROJECT_ID, plan, task_id: task.task_id, replacement_content: '', apply_approved: false };
+                const taskBody = [
+                  '## Blue Ant draft coding task', '',
+                  '- Source audit instruction: #' + context.issue.number,
+                  '- Target: ' + process.env.TARGET_REPOSITORY + '@' + process.env.TARGET_REF,
+                  '- Task: ' + task.task_id, '- File: ' + task.path, '- Finding: ' + task.evidence, '',
+                  '### Human action required', '',
+                  'Independently verify the finding. If confirmed, replace the empty replacement_content value below with the complete content for exactly this existing file, then set apply_approved to true. Save the issue edit as the repository owner. No worker runs on issue creation; it only runs after an owner-authored edit with explicit approval.', '',
+                  'Safety-auditor findings are never eligible for this route.', '',
+                  '### Structured instruction', '', '```json', JSON.stringify(taskPayload, null, 2), '```'
+                ].join('\\n');
+                await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title: '[blue-ant-plan-pr] ' + task.task_id + ' — ' + task.path, body: taskBody });
+              }
+            }
