@@ -68,7 +68,7 @@ def run_bridge_command(
 
     audit_report = {
         "schema_version": 1,
-        "mode": "bounded_sequential_read_only_audit_loop",
+        "mode": "bounded_parallel_read_only_audit",
         "project_id": command["project_id"],
         "task_context": command["task"],
         "cycles_used": len(cycles),
