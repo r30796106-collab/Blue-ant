@@ -427,7 +427,8 @@ Example issue body (raw JSON; do not wrap it in Markdown fences):
   "ref": "master",
   "roles": ["repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"],
   "max_cycles": 4,
-  "task": "Inspect repository health and prepare a review plan"
+  "task": "Inspect repository health and prepare a review plan",
+  "snapshot_sources": true
 }
 ```
 
@@ -437,6 +438,12 @@ is context metadata only; it is never executed as code or shell input. The
 workflow has read-only target checkout permissions. It does not run target
 tests, generate arbitrary code, modify files, approve/apply patches, merge PRs,
 or deploy. Existing human-approved coding workflows remain separate.
+
+The optional `snapshot_sources` field defaults to `false`. Set it to
+`true` to make each selected specialist inspect its own bounded private
+snapshot. Snapshots exclude common generated and credential-like paths, reject
+symlinks, and fail closed above the 5,000-file / 50 MB limits. The controller
+preserves this setting when continuing to the next pre-authorized role.
 
 **Important operating boundary:** this is a GitHub issue-based command/result
 bridge, not a continuously running ChatGPT process or a direct ChatGPT API
