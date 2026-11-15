@@ -29,7 +29,6 @@ class Scheduler:
 
         with ThreadPoolExecutor(max_workers=self.budget.max_workers) as pool:
             while True:
-                dispatched = False
                 for task in self.controller.ready_tasks():
                     if len(in_flight) >= self.budget.max_workers:
                         break
@@ -43,7 +42,6 @@ class Scheduler:
                     future = pool.submit(handlers[task.worker_role], task)
                     in_flight[future] = task
                     used_memory += required
-                    dispatched = True
 
                 if not in_flight:
                     # No runnable work remains, or every ready task lacks a handler
