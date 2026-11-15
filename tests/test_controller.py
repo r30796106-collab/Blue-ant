@@ -46,7 +46,7 @@ def test_worker_exception_becomes_observation_and_loop_continues():
         execute=lambda item: (_ for _ in ()).throw(RuntimeError("worker unavailable")),
         decide_next=decide,
     )
-    assert seen == ["failed"]
+    assert seen == ["failed", "failed"]
     assert report.observations[0].summary == "RuntimeError: worker unavailable"
     assert report.stop_reason == "controller_stopped"
 
