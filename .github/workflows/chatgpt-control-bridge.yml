@@ -101,6 +101,7 @@ jobs:
               '- Command: ' + (process.env.COMMAND_ID || 'validation failed'),
               '- Target: ' + (process.env.TARGET_REPOSITORY || 'not resolved') + '@' + (process.env.TARGET_REF || 'not resolved'),
               '- Parallel workers completed: ' + (audit?.cycles_used ?? 0),
+              '- Audit chain: ' + (audit?.audit_chain?.valid ? 'verified (' + audit.audit_chain.records + ' records)' : 'unavailable or invalid'),
               '- Controller decision: **' + (decision?.action || 'unavailable') + '**',
               '- Plan tasks: ' + tasks.length,
               '',
