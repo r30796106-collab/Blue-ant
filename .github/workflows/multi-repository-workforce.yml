@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: '[{"project_id":"blue-ant","repository":"r30796106-collab/Blue-ant","ref":"main"}]'
+      snapshot_sources:
+        description: "Create a bounded private source snapshot for each specialist task"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,11 +68,17 @@ jobs:
         env:
           PROJECT_ID: ${{ matrix.project.project_id }}
         run: |
+          set -euo pipefail
           mkdir -p artifacts
-          blue-ant-workforce \
-            --project "$PROJECT_ID=targets/$PROJECT_ID" \
-            --max-workers 4 \
+          args=(
+            --project "$PROJECT_ID=targets/$PROJECT_ID"
+            --max-workers 4
             --output "artifacts/$PROJECT_ID-report.json"
+          )
+          if [ "${{ inputs.snapshot_sources }}" = "true" ]; then
+            args+=(--snapshot-sources)
+          fi
+          blue-ant-workforce "${args[@]}"
 
       - name: Upload workforce report
         uses: actions/upload-artifact@v4
