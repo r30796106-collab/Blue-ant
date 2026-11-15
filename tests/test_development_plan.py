@@ -72,6 +72,21 @@ def test_rejects_invalid_or_untrusted_report_fields(bad):
         generate_development_plan(bad, project_id="demo")
 
 
+def test_rejects_untrusted_target_repository_and_ref():
+    report = {
+        "target_repository": "attacker/project",
+        "target_ref": "main",
+        "test_profile": "python-unittest",
+        "status": "success",
+    }
+    with pytest.raises(ValueError, match="owner scope"):
+        generate_development_plan(audit_report(), report, project_id="demo")
+    report["target_repository"] = "r30796106-collab/demo"
+    report["target_ref"] = "../main"
+    with pytest.raises(ValueError, match="target_ref"):
+        generate_development_plan(audit_report(), report, project_id="demo")
+
+
 def test_rejects_oversized_findings():
     report = audit_report()
     report["cycles"] = [{
