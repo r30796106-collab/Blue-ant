@@ -67,3 +67,44 @@ def test_resource_budget():
 def test_worker_template_validation():
     with pytest.raises(ValueError):
         WorkerTemplate("developer", (), max_concurrency=0)
+
+from blue_ant.scheduler import Scheduler
+
+
+def test_scheduler_runs_independent_tasks_and_respects_dependencies():
+    controller = BlueAntController()
+    controller.submit(make_task("first"))
+    controller.submit(make_task("second"))
+    controller.submit(make_task("third", ["first", "second"]))
+    scheduler = Scheduler(controller, ResourceBudget(max_workers=2))
+    result = scheduler.run({"general": lambda task: task.task_id.upper()})
+    assert result["first"] is TaskStatus.SUCCEEDED
+    assert result["second"] is TaskStatus.SUCCEEDED
+    assert result["third"] is TaskStatus.SUCCEEDED
+    assert controller.tasks["third"].result == "THIRD"
+
+
+def test_scheduler_retries_handler_failure_with_bounded_attempts():
+    controller = BlueAntController()
+    controller.submit(make_task("retry", max_attempts=2))
+    calls = {"count": 0}
+
+    def flaky(_task):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("temporary")
+        return "ok"
+
+    result = Scheduler(controller, ResourceBudget()).run({"general": flaky})
+    assert calls["count"] == 2
+    assert result["retry"] is TaskStatus.SUCCEEDED
+
+
+def test_scheduler_leaves_task_ready_when_memory_budget_is_insufficient():
+    controller = BlueAntController()
+    task = Task("large", "demo", "qa", "large", required_memory_mb=2048)
+    controller.submit(task)
+    result = Scheduler(
+        controller, ResourceBudget(max_workers=2, available_memory_mb=512)
+    ).run({"general": lambda _task: "should not run"})
+    assert result["large"] is TaskStatus.READY
