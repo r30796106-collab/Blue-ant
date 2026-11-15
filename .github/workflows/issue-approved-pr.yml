@@ -23,8 +23,15 @@ jobs:
           import json, os, re
           data = json.loads(os.environ.get("ISSUE_BODY") or "")
           required = {"target_ref", "project_id", "proposal", "apply_approved"}
-          if not isinstance(data, dict) or set(data) != required:
-              raise SystemExit("Issue body must contain exactly: " + ", ".join(sorted(required)))
+          allowed = (required, required | {"target_repository"})
+          if not isinstance(data, dict) or set(data) not in allowed:
+              raise SystemExit("Issue body must contain the required fields and optional target_repository")
+          target_repository = data.get("target_repository", os.environ["GITHUB_REPOSITORY"])
+          if (not isinstance(target_repository, str)
+              or not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", target_repository)):
+              raise SystemExit("target_repository must be a public repository under r30796106-collab")
+          if target_repository != os.environ["GITHUB_REPOSITORY"] and not os.environ.get("BLUE_ANT_WORKER_TOKEN"):
+              raise SystemExit("Cross-repository writes require the BLUE_ANT_WORKER_TOKEN secret")
           ref = data["target_ref"]
           if (not isinstance(ref, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
               or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
@@ -69,7 +76,7 @@ jobs:
           with open(os.path.join(instruction_dir, "proposal.json"), "w", encoding="utf-8") as f:
               json.dump(proposal, f, ensure_ascii=False)
           with open(os.path.join(instruction_dir, "metadata.json"), "w", encoding="utf-8") as f:
-              json.dump({"target_ref": ref, "project_id": project}, f)
+              json.dump({"target_ref": ref, "project_id": project, "target_repository": target_repository}, f)
           PY
 
       - name: Read validated metadata
@@ -80,12 +87,22 @@ jobs:
           data = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "metadata.json"), encoding="utf-8"))
           print("target_ref=" + data["target_ref"])
           print("project_id=" + data["project_id"])
+          print("target_repository=" + data["target_repository"])
           PY
+
+      - name: Checkout Blue Ant worker source
+        uses: actions/checkout@v4
+        with:
+          path: blue-ant
+          persist-credentials: false
 
       - name: Checkout target repository at approved base ref
         uses: actions/checkout@v4
         with:
+          repository: ${{ steps.instruction.outputs.target_repository }}
           ref: ${{ steps.instruction.outputs.target_ref }}
+          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          path: target
           persist-credentials: true
 
       - name: Set up Python
@@ -94,11 +111,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install Blue Ant patch engine
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e "blue-ant[dev]"
 
       - name: Apply hash-checked approved proposal
         run: |
-          blue-ant-patch --workspace . --proposal "$RUNNER_TEMP/blue-ant-instruction/proposal.json" --approve
+          blue-ant-patch --workspace target --proposal "$RUNNER_TEMP/blue-ant-instruction/proposal.json" --approve
           python - <<'PY'
           import json, os
           proposal = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "proposal.json"), encoding="utf-8"))
@@ -106,9 +123,9 @@ jobs:
               for item in proposal["changes"]:
                   f.write(item["path"].encode("utf-8") + bytes([0]))
           PY
-          git add --all --pathspec-from-file="$RUNNER_TEMP/blue-ant-instruction/changed-paths.nul" --pathspec-file-nul
-          git diff --cached --check
-          if git diff --cached --quiet; then
+          git -C target add --all --pathspec-from-file="$RUNNER_TEMP/blue-ant-instruction/changed-paths.nul" --pathspec-file-nul
+          git -C target diff --cached --check
+          if git -C target diff --cached --quiet; then
             echo "No changes to commit"
             exit 1
           fi
@@ -121,17 +138,19 @@ jobs:
           PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
         run: |
           BRANCH="blue-ant/issue-${ISSUE_NUMBER}-run-${RUN_ID}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$BRANCH"
-          git commit -m "Blue Ant: approved patch for ${PROJECT_ID}"
-          git push --set-upstream origin "$BRANCH"
+          git -C target config user.name "github-actions[bot]"
+          git -C target config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C target switch -c "$BRANCH"
+          git -C target add --all
+          git -C target commit -m "Blue Ant: approved patch for ${PROJECT_ID}"
+          git -C target push --set-upstream origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Open pull request
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
+          TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           BRANCH: ${{ steps.commit.outputs.branch }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PROJECT_ID: ${{ steps.instruction.outputs.project_id }}
@@ -152,7 +171,7 @@ jobs:
               f.write(body)
           PY
           gh pr create \
-            --repo "$GITHUB_REPOSITORY" \
+            --repo "$TARGET_REPOSITORY" \
             --base "$TARGET_REF" \
             --head "$BRANCH" \
             --title "Blue Ant: approved patch for $PROJECT_ID" \
@@ -162,9 +181,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.commit.outputs.branch }}
+          TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
         run: |
-          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$BRANCH"
-          gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$BRANCH"
+          gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$GITHUB_SHA"
+          gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
       
       - name: Report result on instruction issue
         if: always()
