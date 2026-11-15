@@ -63,10 +63,11 @@ jobs:
                   raise SystemExit("expected_sha256 must be null or a lowercase SHA-256 digest")
           if total > 2_000_000:
               raise SystemExit("Proposal exceeds 2 MB")
-          os.makedirs("instruction", exist_ok=True)
-          with open("instruction/proposal.json", "w", encoding="utf-8") as f:
+          instruction_dir = os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction")
+          os.makedirs(instruction_dir, exist_ok=True)
+          with open(os.path.join(instruction_dir, "proposal.json"), "w", encoding="utf-8") as f:
               json.dump(proposal, f, ensure_ascii=False)
-          with open("instruction/metadata.json", "w", encoding="utf-8") as f:
+          with open(os.path.join(instruction_dir, "metadata.json"), "w", encoding="utf-8") as f:
               json.dump({"target_ref": ref, "project_id": project}, f)
           PY
 
@@ -75,7 +76,7 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          data = json.load(open("instruction/metadata.json", encoding="utf-8"))
+          data = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "metadata.json"), encoding="utf-8"))
           print("target_ref=" + data["target_ref"])
           print("project_id=" + data["project_id"])
           PY
@@ -96,15 +97,15 @@ jobs:
 
       - name: Apply hash-checked approved proposal
         run: |
-          blue-ant-patch --workspace . --proposal "$GITHUB_WORKSPACE/instruction/proposal.json" --approve
+          blue-ant-patch --workspace . --proposal "$RUNNER_TEMP/blue-ant-instruction/proposal.json" --approve
           python - <<'PY'
           import json
-          proposal = json.load(open("instruction/proposal.json", encoding="utf-8"))
-          with open("instruction/changed-paths.nul", "wb") as f:
+          proposal = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "proposal.json"), encoding="utf-8"))
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "changed-paths.nul"), "wb") as f:
               for item in proposal["changes"]:
                   f.write(item["path"].encode("utf-8") + b"\\0")
           PY
-          git add --all --pathspec-from-file=instruction/changed-paths.nul --pathspec-file-nul
+          git add --all --pathspec-from-file="$RUNNER_TEMP/blue-ant-instruction/changed-paths.nul" --pathspec-file-nul
           git diff --cached --check
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -144,12 +145,14 @@ jobs:
       - name: Report result on instruction issue
         if: always()
         uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
         with:
           script: |
             const body = [
               '## Blue Ant coding worker',
               '',
-              'Workflow status: **' + (context.payload.workflow_run?.conclusion || 'completed; inspect Actions run') + '**',
+              'Workflow status: **' + (process.env.JOB_STATUS || 'unknown') + '**',
               'The worker requires explicit `apply_approved: true`, validates the patch, and opens a separate pull request. It never merges.',
               'Inspect the Actions run and any generated pull request before proceeding.'
             ].join('\\n');
