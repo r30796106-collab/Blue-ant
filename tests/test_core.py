@@ -4,6 +4,7 @@ from blue_ant.controller import BlueAntController
 from blue_ant.models import Task, TaskStatus, WorkerTemplate
 from blue_ant.policy import PolicyGateway
 from blue_ant.resources import ResourceBudget
+from blue_ant.scheduler import Scheduler
 
 
 def make_task(task_id, depends_on=(), max_attempts=1):
@@ -67,8 +68,6 @@ def test_resource_budget():
 def test_worker_template_validation():
     with pytest.raises(ValueError):
         WorkerTemplate("developer", (), max_concurrency=0)
-
-from blue_ant.scheduler import Scheduler
 
 
 def test_scheduler_runs_independent_tasks_and_respects_dependencies():
