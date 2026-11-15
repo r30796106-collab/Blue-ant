@@ -98,6 +98,26 @@ blue-ant-workforce \
 
 Every project receives one task per selected role. Tasks across the same repository and different repositories share one bounded worker pool, so they can run concurrently without exceeding `--max-workers`. A worker failure is recorded per task and does not discard successful results from other tasks.
 
+By default, read-only specialists inspect the registered source directly. Add
+`--snapshot-sources` to copy each project into its own task workspace before
+inspection:
+
+```bash
+blue-ant-workforce \
+  --project elon=/path/to/ELON \
+  --roles repo_analyst,test_auditor,docs_auditor,safety_auditor \
+  --max-workers 4 \
+  --snapshot-sources \
+  --output blue-ant-workforce-report.json
+```
+
+Snapshots are bounded to 5,000 files, 5 MB per file, and 50 MB total by
+default. They exclude VCS, dependency, cache, build, and virtual-environment
+directories, plus common credential files and private-key formats. Symlinks
+and special files fail closed; copied files receive owner-only permissions.
+The source project is never modified. A task snapshot is not an OS sandbox,
+and the workspace is not automatically deleted or overwritten on reruns.
+
 ### GitHub Actions: multiple repositories
 
 Open **Actions → Blue Ant Multi-Repository Workforce → Run workflow** and provide a JSON array. Each matrix entry checks out one public repository and runs its specialist tasks concurrently; up to four repositories run at once:
