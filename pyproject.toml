@@ -26,6 +26,7 @@ blue-ant-prepare = "blue_ant.code_preparation_cli:main"
 blue-ant-bridge = "blue_ant.bridge_cli:main"
 blue-ant-bridge-controller = "blue_ant.bridge_controller_cli:main"
 blue-ant-bridge-runner = "blue_ant.bridge_runner:main"
+blue-ant-bridge-event = "blue_ant.bridge_event:main"
 blue-ant-task-bundle = "blue_ant.approved_task_bundle:main"
 blue-ant-project = "blue_ant.project_cli:main"
 
