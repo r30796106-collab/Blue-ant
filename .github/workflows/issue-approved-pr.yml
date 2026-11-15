@@ -75,7 +75,7 @@ jobs:
         id: instruction
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
+          import json, os
           data = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "blue-ant-instruction", "metadata.json"), encoding="utf-8"))
           print("target_ref=" + data["target_ref"])
           print("project_id=" + data["project_id"])
