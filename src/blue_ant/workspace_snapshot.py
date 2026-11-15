@@ -36,6 +36,16 @@ class SnapshotResult:
     skipped_sensitive_files: tuple[str, ...]
 
 
+def _reject_symlink_components(path: Path) -> None:
+    for component in (path, *path.parents):
+        if component.is_symlink():
+            raise ValueError(f"workspace path must not contain symlinks: {component}")
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
+
+
 def _is_sensitive_file(name: str) -> bool:
     lowered = name.lower()
     if lowered == ".env.example":
@@ -91,6 +101,7 @@ def create_workspace_snapshot(
         raise NotADirectoryError(str(source))
 
     supplied_destination = Path(workspace).expanduser()
+    _reject_symlink_components(supplied_destination.parent)
     if supplied_destination.is_symlink():
         raise ValueError("workspace destination must not be a symlink")
     parent = supplied_destination.parent.resolve(strict=True)
@@ -125,7 +136,9 @@ def create_workspace_snapshot(
     nofollow = getattr(os, "O_NOFOLLOW", 0)
 
     try:
-        for current_text, dir_names, file_names in os.walk(source, topdown=True, followlinks=False):
+        for current_text, dir_names, file_names in os.walk(
+            source, topdown=True, followlinks=False, onerror=_raise_walk_error
+        ):
             current = Path(current_text)
             kept_dirs: list[str] = []
             for name in sorted(dir_names):
@@ -197,6 +210,8 @@ def create_workspace_snapshot(
                         view = memoryview(chunk)
                         while view:
                             written = os.write(target_fd, view)
+                            if written <= 0:
+                                raise OSError("short write while creating workspace snapshot")
                             view = view[written:]
                     after = os.fstat(source_fd)
                     if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
