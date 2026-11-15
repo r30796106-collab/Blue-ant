@@ -1,0 +1,95 @@
+name: Blue Ant Target Python Test Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repository:
+        description: Public repository under r30796106-collab
+        required: true
+        type: string
+      target_ref:
+        description: Branch or ref to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  python-unittest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Validate target
+        env:
+          TARGET_REPOSITORY: ${{ inputs.target_repository }}
+          TARGET_REF: ${{ inputs.target_ref }}
+        run: |
+          python - <<'PY'
+          import os, re
+          repo = os.environ["TARGET_REPOSITORY"]
+          ref = os.environ["TARGET_REF"]
+          if not re.fullmatch(r"r30796106-collab/[A-Za-z0-9_.-]{1,100}", repo):
+              raise SystemExit("Only public repositories owned by r30796106-collab are allowed")
+          if (not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", ref)
+              or ref.startswith("-") or ".." in ref or "//" in ref or ref.endswith(("/", "."))):
+              raise SystemExit("Invalid target ref")
+          PY
+
+      - name: Checkout target source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.target_repository }}
+          ref: ${{ inputs.target_ref }}
+          path: target
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run syntax compilation
+        working-directory: target
+        run: python -m compileall -q .
+
+      - name: Run standard-library unittest suite
+        working-directory: target
+        run: python -m unittest discover -s tests -v
+
+      - name: Record test result
+        if: always()
+        env:
+          TARGET_REPOSITORY: ${{ inputs.target_repository }}
+          TARGET_REF: ${{ inputs.target_ref }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p test-report
+          python - <<'PY'
+          import json, os
+          report = {
+              "target_repository": os.environ["TARGET_REPOSITORY"],
+              "target_ref": os.environ["TARGET_REF"],
+              "test_profile": "python-unittest",
+              "status": os.environ["JOB_STATUS"],
+              "command": "python -m compileall -q . && python -m unittest discover -s tests -v",
+              "limitations": [
+                  "Runs untrusted target code in an isolated GitHub-hosted runner.",
+                  "No repository write token or project secrets are provided to the test process.",
+                  "No dependencies are installed; projects requiring external packages may fail.",
+                  "Only the standard-library unittest profile is supported by this workflow."
+              ]
+          }
+          with open("test-report/result.json", "w", encoding="utf-8") as f:
+              json.dump(report, f, indent=2)
+              f.write("\\n")
+          PY
+
+      - name: Upload target test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: target-tests-${{ github.run_id }}
+          path: test-report/result.json
+          if-no-files-found: error
+          retention-days: 7
