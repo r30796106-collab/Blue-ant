@@ -1,8 +1,6 @@
 name: Blue Ant Sub-bot Review
 
 on:
-  pull_request:
-    branches: ["main"]
   workflow_run:
     workflows: ["tests"]
     types: [completed]
@@ -25,7 +23,7 @@ permissions:
 
 jobs:
   read-only-review:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Validate target repository
