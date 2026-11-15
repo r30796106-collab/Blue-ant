@@ -239,7 +239,6 @@ def apply_patch_proposal(
                     project_id=proposal.project_id,
                     task_id=proposal.task_id,
                     error_type=type(exc).__name__,
-                    error=str(exc),
                 )
             except Exception:
                 pass
