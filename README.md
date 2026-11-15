@@ -178,3 +178,27 @@ blue-ant-patch --workspace /path/to/disposable/workspace --proposal proposal.jso
 
 This CLI does not execute project code, run tests, create Git branches, or push
 to GitHub. Verify applied changes in a separate CI job before proposing a merge.
+
+
+## GitHub instruction → worker → result cycle (V1)
+
+The **Blue Ant Instruction Worker** workflow accepts a JSON array of bounded instructions and runs up to four public-repository jobs concurrently. Each instruction names a project, repository/ref, and one approved specialist role. Every job publishes an instruction manifest and structured workforce report as a downloadable artifact.
+
+Open **Actions → Blue Ant Instruction Worker → Run workflow** and provide:
+
+```json
+[
+  {
+    "instruction_id": "inspect-001",
+    "project_id": "blue-ant",
+    "repository": "owner/repository",
+    "ref": "main",
+    "worker_role": "repo_analyst",
+    "task": "Inventory files and summarize repository structure"
+  }
+]
+```
+
+Allowed roles: `repo_analyst`, `test_auditor`, `docs_auditor`, and `safety_auditor`. Results are published as `blue-ant-result-<instruction_id>` artifacts. A controller can review those results and submit the next instruction in a subsequent run.
+
+V1 boundary: task text is context metadata, not executable code. Specialists perform only fixed read-only audit routines. This workflow does not edit target repositories, run their test suites, create branches/PRs, or call ChatGPT automatically. The controller reviews the artifact and decides the next step. Public repositories only by default.
