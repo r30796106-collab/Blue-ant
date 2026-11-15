@@ -1,0 +1,1 @@
+Blue Ant CI dispatch smoke test. Harmless proof file; do not merge.
