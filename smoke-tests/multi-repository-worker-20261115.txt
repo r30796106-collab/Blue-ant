@@ -1,0 +1,1 @@
+Blue Ant multi-repository worker smoke test. Harmless proof file; do not merge.
