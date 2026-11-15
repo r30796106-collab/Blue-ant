@@ -24,8 +24,11 @@ _REQUIRED = {
 
 def validate_bridge_command(value: Any) -> dict[str, Any]:
     """Validate and return a canonical bridge command, rejecting extra fields."""
-    if not isinstance(value, dict) or set(value) != _REQUIRED:
-        raise ValueError("command must contain exactly: " + ", ".join(sorted(_REQUIRED)))
+    if not isinstance(value, dict) or not _REQUIRED.issubset(value) or set(value) - (_REQUIRED | {"snapshot_sources"}):
+        raise ValueError("command must contain required fields and only the optional snapshot_sources field")
+    snapshot_sources = value.get("snapshot_sources", False)
+    if not isinstance(snapshot_sources, bool):
+        raise ValueError("snapshot_sources must be a boolean")
     if value["schema_version"] != 1 or isinstance(value["schema_version"], bool):
         raise ValueError("schema_version must be integer 1")
     if value["command"] != "audit_plan":
@@ -70,6 +73,7 @@ def validate_bridge_command(value: Any) -> dict[str, Any]:
         "roles": list(roles),
         "max_cycles": cycles,
         "task": task.strip(),
+        "snapshot_sources": snapshot_sources,
     }
 
 

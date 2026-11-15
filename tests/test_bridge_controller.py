@@ -3,7 +3,7 @@ import pytest
 from blue_ant.bridge_controller import evaluate_bridge_result
 
 
-def bundle(*, roles=None, cycles=None, tasks=None, max_cycles=None):
+def bundle(*, roles=None, cycles=None, tasks=None, max_cycles=None, snapshot_sources=False):
     roles = roles or ["repo_analyst", "docs_auditor"]
     cycles = cycles if cycles is not None else [
         {"role": roles[0], "status": "success", "findings": []}
@@ -16,6 +16,7 @@ def bundle(*, roles=None, cycles=None, tasks=None, max_cycles=None):
             "repository": "r30796106-collab/ELON", "ref": "master",
             "roles": roles, "max_cycles": max_cycles or len(roles),
             "task": "Read-only review",
+            "snapshot_sources": snapshot_sources,
         },
         "audit_report": {
             "schema_version": 1, "mode": "bounded_sequential_read_only_audit_loop",
@@ -101,3 +102,10 @@ def test_generated_command_id_stays_within_bridge_limit():
     value["command"]["command_id"] = "a" * 48
     result = evaluate_bridge_result(value)
     assert len(result.next_command["command_id"]) <= 48
+
+
+
+def test_controller_preserves_snapshot_mode_in_next_instruction():
+    result = evaluate_bridge_result(bundle(snapshot_sources=True))
+    assert result.action == "next_instruction"
+    assert result.next_command["snapshot_sources"] is True

@@ -3,7 +3,7 @@ import json
 from blue_ant.bridge_runner import run_bridge_command
 
 
-def write_command(path, *, roles=None, max_cycles=None):
+def write_command(path, *, roles=None, max_cycles=None, snapshot_sources=False):
     roles = roles or ["repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"]
     value = {
         "schema_version": 1,
@@ -15,6 +15,7 @@ def write_command(path, *, roles=None, max_cycles=None):
         "roles": roles,
         "max_cycles": max_cycles or len(roles),
         "task": "Read-only parallel review",
+        "snapshot_sources": snapshot_sources,
     }
     path.write_text(json.dumps(value), encoding="utf-8")
 
@@ -75,3 +76,25 @@ def test_runner_does_not_modify_target_files(tmp_path):
 
     after = {p.relative_to(target).as_posix(): p.read_bytes() for p in target.rglob("*") if p.is_file()}
     assert after == before
+
+
+
+def test_runner_uses_isolated_snapshot_when_requested(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    make_clean_target(target)
+    (target / ".env").write_text("TOKEN=keep-out", encoding="utf-8")
+    command = tmp_path / "command.json"
+    write_command(command, roles=["repo_analyst"], snapshot_sources=True)
+
+    result = run_bridge_command(command, target, tmp_path / "out")
+
+    assert result["workers_completed"] == 1
+    audit = json.loads((tmp_path / "out" / "bridge-v3-test-audit.json").read_text())
+    assert audit["workspace_mode"] == "bounded_source_snapshot"
+    task_workspace = tmp_path / ".blue-ant-workspaces" / "bridge-v3-test" / "demo" / "tasks" / "cycle-1-repo-analyst"
+    assert (task_workspace / "README.md").is_file()
+    assert not (task_workspace / ".env").exists()
+    assert (target / ".env").read_text(encoding="utf-8") == "TOKEN=keep-out"
+    assert not (tmp_path / "out" / "workspaces").exists()
+    assert not any((tmp_path / "out").rglob(".env"))

@@ -30,9 +30,16 @@ def run_bridge_command(
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    registry = ProjectRegistry(output / "workspaces")
+    # Keep private source snapshots outside the artifact directory so the
+    # GitHub workflow uploads reports, not copied project source trees.
+    workspace_root = output.parent / ".blue-ant-workspaces" / command["command_id"]
+    registry = ProjectRegistry(workspace_root)
     registry.register(command["project_id"], target_path)
-    workforce = Workforce(registry, max_workers=min(4, command["max_cycles"]))
+    workforce = Workforce(
+        registry,
+        max_workers=min(4, command["max_cycles"]),
+        snapshot_sources=command["snapshot_sources"],
+    )
 
     roles = [SubBotRole(role) for role in command["roles"][: command["max_cycles"]]]
     assignments = [
@@ -75,9 +82,11 @@ def run_bridge_command(
         "stop_reason": "worker_error" if any(c["status"] == "failed" for c in cycles) else "sequence_completed",
         "cycles": cycles,
         "execution_mode": "parallel_read_only_specialists",
+        "workspace_mode": "bounded_source_snapshot" if command["snapshot_sources"] else "read_only_source_reference",
         "limitations": [
             "All selected fixed specialists run concurrently; task context is metadata only.",
             "Workers inspect repository text and do not execute target code or tests.",
+            "Snapshot mode excludes common generated and credential-like paths, rejects symlinks, and is not an OS sandbox.",
             "Findings are heuristic and require independent human verification.",
         ],
     }
