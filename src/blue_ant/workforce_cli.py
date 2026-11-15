@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .projects import ProjectRegistry
+from .resources import ResourcePolicy, ResourceSnapshot
 from .subbots import SubBotRole
 from .workforce import WorkAssignment, Workforce
 
@@ -18,6 +19,10 @@ def main() -> int:
                         help="Comma-separated approved specialist roles")
     parser.add_argument("--workspace-root", default=".blue-ant/workspaces")
     parser.add_argument("--max-workers", type=int, default=4)
+    parser.add_argument("--cpu-count", type=int, help="available CPU count for optional resource-aware worker limiting")
+    parser.add_argument("--available-memory-mb", type=int, help="available memory in MiB for optional resource-aware worker limiting")
+    parser.add_argument("--reserve-memory-mb", type=int, default=512, help="memory to reserve in MiB (default: 512)")
+    parser.add_argument("--memory-per-worker-mb", type=int, default=256, help="memory budget per worker in MiB (default: 256)")
     parser.add_argument("--snapshot-sources", action="store_true",
                         help="copy each project into a bounded, private task workspace before auditing")
     parser.add_argument("--output", default="blue-ant-workforce-report.json")
@@ -42,13 +47,44 @@ def main() -> int:
                 task_id = f"task-{index}-{project_id[:20]}-{role.value}"
                 assignments.append(WorkAssignment(task_id, project_id, role))
 
-        results = Workforce(registry, max_workers=args.max_workers, snapshot_sources=args.snapshot_sources).run(assignments)
+        if (args.cpu_count is None) != (args.available_memory_mb is None):
+            raise ValueError("--cpu-count and --available-memory-mb must be provided together")
+        resource_policy = None
+        resource_snapshot = None
+        if args.cpu_count is not None:
+            resource_policy = ResourcePolicy(
+                max_workers=args.max_workers,
+                reserve_memory_bytes=args.reserve_memory_mb * 1024 * 1024,
+                memory_per_worker_bytes=args.memory_per_worker_mb * 1024 * 1024,
+            )
+            resource_snapshot = ResourceSnapshot(
+                cpu_count=args.cpu_count,
+                available_memory_bytes=args.available_memory_mb * 1024 * 1024,
+            )
+        workforce = Workforce(
+            registry,
+            max_workers=args.max_workers,
+            snapshot_sources=args.snapshot_sources,
+            resource_policy=resource_policy,
+            resource_snapshot=resource_snapshot,
+        )
+        results = workforce.run(assignments)
         payload = {
             "schema_version": 1,
             "mode": "parallel_read_only_multi_project",
             "projects": [{"project_id": project_id, "source_root": str(path.resolve())}
                          for project_id, path in projects],
             "max_workers": args.max_workers,
+            "requested_max_workers": workforce.requested_max_workers,
+            "effective_max_workers": workforce.max_workers,
+            "resource_snapshot": (
+                {
+                    "cpu_count": resource_snapshot.cpu_count,
+                    "available_memory_bytes": resource_snapshot.available_memory_bytes,
+                    "reserve_memory_bytes": resource_policy.reserve_memory_bytes,
+                    "memory_per_worker_bytes": resource_policy.memory_per_worker_bytes,
+                } if resource_snapshot is not None and resource_policy is not None else None
+            ),
             "workspace_mode": "bounded_source_snapshot" if args.snapshot_sources else "read_only_source_reference",
             "assignments": [{
                 "task_id": item.task_id,
