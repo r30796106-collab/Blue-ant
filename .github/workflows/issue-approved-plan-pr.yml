@@ -151,9 +151,15 @@ jobs:
           TASK_ID: ${{ steps.meta.outputs.task_id }}
           TASK_PATH: ${{ steps.meta.outputs.path }}
         run: |
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          Human-approved plan task: $TASK_ID
+
+          Target file: $TASK_PATH
+
+          This PR was created from a hash-checked proposal after an owner-authored issue edit. It is not merged automatically.
+          EOF
           gh pr create --repo "$TARGET_REPOSITORY" --base "$TARGET_REF" --head "$BRANCH" \
-            --title "Blue Ant: reviewed task $TASK_ID" \
-            --body "Human-approved plan task: $TASK_ID\n\nTarget file: $TASK_PATH\n\nThis PR was created from a hash-checked proposal after an owner-authored issue edit. It is not merged automatically."
+            --title "Blue Ant: reviewed task $TASK_ID" --body-file "$RUNNER_TEMP/pr-body.md"
 
       - name: Dispatch Blue Ant checks and target tests
         env:
