@@ -106,3 +106,61 @@ def test_cli_writes_plan_without_approving_it(tmp_path):
     assert result["approval_required"] is True
     assert result["apply_approved"] is False
     assert result["patch_proposal"] is None
+
+
+
+def test_plan_can_bind_target_repository_without_claiming_tests_ran():
+    plan = generate_development_plan(
+        audit_report(),
+        project_id="demo",
+        target_repository="r30796106-collab/demo",
+        target_ref="feature/audit",
+    )
+    result = plan_to_dict(plan)
+    assert result["target_repository"] == "r30796106-collab/demo"
+    assert result["target_ref"] == "feature/audit"
+    assert not any(task.kind == "target_tests_passed" for task in plan.tasks)
+
+
+def test_target_repository_and_ref_must_be_supplied_together():
+    with pytest.raises(ValueError, match="provided together"):
+        generate_development_plan(
+            audit_report(), project_id="demo",
+            target_repository="r30796106-collab/demo",
+        )
+
+
+def test_target_metadata_is_validated_and_matches_test_report():
+    with pytest.raises(ValueError, match="owner scope"):
+        generate_development_plan(
+            audit_report(), project_id="demo",
+            target_repository="attacker/demo", target_ref="main",
+        )
+    tests = {
+        "target_repository": "r30796106-collab/demo",
+        "target_ref": "main",
+        "test_profile": "python-unittest",
+        "status": "success",
+    }
+    with pytest.raises(ValueError, match="does not match"):
+        generate_development_plan(
+            audit_report(), tests, project_id="demo",
+            target_repository="r30796106-collab/demo", target_ref="other",
+        )
+
+
+def test_cli_accepts_target_metadata_without_test_report(tmp_path):
+    audit_file = tmp_path / "audit.json"
+    audit_file.write_text(json.dumps(audit_report()), encoding="utf-8")
+    output = tmp_path / "plan.json"
+    assert main([
+        "--project-id", "demo",
+        "--audit-report", str(audit_file),
+        "--target-repository", "r30796106-collab/demo",
+        "--target-ref", "main",
+        "--output", str(output),
+    ]) == 0
+    result = json.loads(output.read_text(encoding="utf-8"))
+    assert result["target_repository"] == "r30796106-collab/demo"
+    assert result["target_ref"] == "main"
+    assert result["apply_approved"] is False
