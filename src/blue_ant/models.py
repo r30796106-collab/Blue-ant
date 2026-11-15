@@ -37,8 +37,8 @@ class TaskSpec:
     def __post_init__(self) -> None:
         if not self.task_id.strip():
             raise ValueError("task_id must not be empty")
-        if self.max_attempts < 1:
-            raise ValueError("max_attempts must be at least 1")
+        if not 1 <= self.max_attempts <= 10:
+            raise ValueError("max_attempts must be between 1 and 10")
         if self.task_id in self.depends_on:
             raise ValueError("a task cannot depend on itself")
 
