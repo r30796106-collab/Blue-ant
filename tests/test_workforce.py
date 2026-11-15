@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from blue_ant.audit import AuditLog
 from blue_ant.projects import ProjectRegistry
 from blue_ant.resources import ResourcePolicy, ResourceSnapshot
 from blue_ant.subbots import SubBotRole
@@ -165,3 +166,51 @@ def test_resource_policy_and_snapshot_must_be_provided_together(tmp_path: Path):
             ProjectRegistry(tmp_path / "workspaces"),
             resource_snapshot=ResourceSnapshot(cpu_count=2, available_memory_bytes=1_024),
         )
+
+
+
+def test_workforce_writes_verifiable_audit_events_for_success_and_failure(tmp_path: Path, monkeypatch):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    audit = AuditLog(tmp_path / "workforce.jsonl")
+
+    from blue_ant.subbots import SubBot
+    original_run = SubBot.run
+
+    def selective_run(self, root):
+        if self.role == SubBotRole.SAFETY_AUDITOR:
+            raise RuntimeError("private detail should not be logged")
+        return original_run(self, root)
+
+    monkeypatch.setattr(SubBot, "run", selective_run)
+    results = Workforce(registry, max_workers=2, audit_log=audit).run([
+        WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("safety", "repo", SubBotRole.SAFETY_AUDITOR),
+    ])
+
+    verification = audit.verify()
+    assert verification.valid is True
+    assert verification.records == 6
+    records = [json.loads(line) for line in audit.path.read_text(encoding="utf-8").splitlines()]
+    assert [record["event"] for record in records].count("workforce_task_started") == 2
+    assert any(record["event"] == "workforce_task_completed" for record in records)
+    failure = next(record for record in records if record["event"] == "workforce_task_failed")
+    assert failure["error_type"] == "RuntimeError"
+    assert "private detail" not in audit.path.read_text(encoding="utf-8")
+    assert records[-1]["event"] == "workforce_completed"
+    assert results[0].error is None
+    assert results[1].error == "RuntimeError: private detail should not be logged"
+
+
+def test_workforce_audit_log_is_optional(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    results = Workforce(registry).run([
+        WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
+    ])
+
+    assert results[0].error is None
+    assert not list(tmp_path.glob("*.jsonl"))
