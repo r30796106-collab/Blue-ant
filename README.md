@@ -519,3 +519,20 @@ A missing or mis-scoped token should fail before target checkout. A successful
 credential preflight does not itself prove that GitHub accepted all write
 operations; verify the complete flow with a disposable test proposal before
 using real project changes.
+
+
+## Tamper-evident workforce execution audit
+
+The parallel workforce accepts an optional `AuditLog` instance. When enabled,
+it records workforce start/completion and per-task start/success/failure events
+in the SHA-256 hash-chained JSONL audit format. Failure records include only
+the exception type, not the exception message, to avoid copying arbitrary
+error details into the audit trail.
+
+The ChatGPT Bridge enables this audit automatically. Its execution log is
+stored under the private `.blue-ant-workspaces/<command-id>/` directory,
+outside the uploaded report artifacts. The bridge verifies the complete chain
+before publishing its report and includes the verification status, record
+count, and final hash in the JSON audit report. A failed verification stops
+the bridge run. The hash chain is tamper-evident, not an externally signed or
+immutable log; an actor able to rewrite the entire file can rebuild it.
