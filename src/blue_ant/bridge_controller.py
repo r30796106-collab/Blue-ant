@@ -100,9 +100,11 @@ def evaluate_bridge_result(bundle: Any) -> ControllerDecision:
                 tuple(completed),
             )
         next_role = next(role for role in command["roles"] if role not in completed)
+        suffix = f"-next-{len(completed) + 1}"
+        next_id = command["command_id"][: 48 - len(suffix)] + suffix
         next_command = {
             "schema_version": 1,
-            "command_id": f"{command['command_id']}-next-{len(completed) + 1}",
+            "command_id": next_id,
             "command": "audit_plan",
             "project_id": command["project_id"],
             "repository": command["repository"],
