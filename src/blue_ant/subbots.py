@@ -35,11 +35,24 @@ class SubBot:
     bot_id: str
     role: SubBotRole
 
-    def run(self, root: str | Path) -> list[Finding]:
+    @staticmethod
+    def index_files(root: str | Path) -> tuple[tuple[str, str], ...]:
+        """Read a repository snapshot once for reuse by fixed read-only specialists."""
         repo = Path(root).resolve()
         if not repo.is_dir():
             raise NotADirectoryError(str(repo))
-        files = list(_iter_text_files(repo))
+        return tuple(_iter_text_files(repo))
+
+    def run(
+        self,
+        root: str | Path,
+        *,
+        indexed_files: tuple[tuple[str, str], ...] | None = None,
+    ) -> list[Finding]:
+        repo = Path(root).resolve()
+        if not repo.is_dir():
+            raise NotADirectoryError(str(repo))
+        files = list(indexed_files) if indexed_files is not None else list(_iter_text_files(repo))
         if self.role == SubBotRole.REPO_ANALYST:
             return _inventory(self.bot_id, files)
         if self.role == SubBotRole.TEST_AUDITOR:
