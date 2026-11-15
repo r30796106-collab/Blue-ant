@@ -222,6 +222,18 @@ jobs:
           git -C target push --set-upstream origin "$BRANCH"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
+      - name: Recheck pinned target base before opening pull request
+        env:
+          TARGET_REF: ${{ needs.validate-bundle.outputs.ref }}
+          BASE_SHA: ${{ needs.validate-bundle.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          CURRENT_BASE="$(git -C target ls-remote origin "refs/heads/$TARGET_REF" | cut -f1)"
+          if [ -z "$CURRENT_BASE" ] || [ "$CURRENT_BASE" != "$BASE_SHA" ]; then
+            echo "::error::Target base ref moved during task preparation. Refusing to open a stale pull request."
+            echo "::error::Pinned base: $BASE_SHA; current base: ${CURRENT_BASE:-unavailable}"
+            exit 1
+          fi
       - name: Open task-specific pull request
         env:
           GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN }}
