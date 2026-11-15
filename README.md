@@ -228,3 +228,38 @@ push commits or open PRs, and does not execute target code or tests. A human
 must review the artifact and decide whether to apply the resulting changes
 through a separate approved GitHub operation. This is a controlled patch
 executor, not yet an autonomous code-generating agent.
+
+
+## ChatGPT ↔ GitHub issue worker feedback loop (V1)
+
+The **Blue Ant Issue-Driven Worker Loop** connects a controller to GitHub
+without storing an LLM API key in the repository. A controller (including
+ChatGPT when operating through an authorized GitHub connection) can create a
+`[blue-ant]` issue containing one strict JSON instruction. GitHub Actions
+runs the requested fixed specialist and posts the structured result back as
+an issue comment. The controller reads that comment, decides the next step,
+and opens the next instruction issue. Multiple issues can run concurrently.
+
+Example issue body:
+
+```json
+{
+  "instruction_id": "inspect-001",
+  "project_id": "blue-ant",
+  "repository": "r30796106-collab/Blue-ant",
+  "ref": "main",
+  "worker_role": "repo_analyst",
+  "task": "Inspect the repository structure and report key components"
+}
+```
+
+Only issues opened by the repository owner account with a title beginning
+`[blue-ant]` trigger the worker. Only public repositories under
+`r30796106-collab` and the four built-in specialist roles are accepted.
+The task field is controller context; it is not interpreted as code or as
+arbitrary shell instructions. Workers remain read-only and do not execute
+target tests or edit project files.
+
+This creates the V1 **instruction → worker → result comment → next instruction**
+loop. The human/controller remains responsible for reviewing results and
+deciding when to use the separately approval-gated patch worker.
