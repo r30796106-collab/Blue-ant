@@ -122,6 +122,49 @@ def test_snapshot_mode_audits_private_copy_and_preserves_source(tmp_path: Path):
     assert (source / ".git" / "config").read_text(encoding="utf-8") == "private git metadata"
 
 
+def test_shared_snapshot_mode_copies_once_per_project_and_keeps_task_workspaces_separate(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    audit_path = tmp_path / "audit.jsonl"
+
+    results = Workforce(
+        registry,
+        snapshot_sources=True,
+        shared_snapshot_sources=True,
+        audit_path=audit_path,
+        max_workers=2,
+    ).run([
+        WorkAssignment("shared-docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("shared-tests", "repo", SubBotRole.TEST_AUDITOR),
+    ])
+
+    shared_source = tmp_path / "workspaces" / "repo" / "shared-source"
+    assert len(results) == 2
+    assert all(result.error is None for result in results)
+    assert len({result.workspace for result in results}) == 2
+    assert all(result.workspace.is_dir() for result in results)
+    assert all(not (result.workspace / "README.md").exists() for result in results)
+    assert (shared_source / "README.md").is_file()
+    assert (shared_source / "test_sample.py").is_file()
+
+    events = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    prepared = [event for event in events if event["event"] == "task_workspace_prepared"]
+    assert len(prepared) == 2
+    assert sum(event["snapshot_files"] is not None for event in prepared) == 1
+    assert sum(event["snapshot_reused"] for event in prepared) == 1
+    assert all(event["snapshot_mode"] == "shared_project" for event in prepared)
+    assert AuditLog(audit_path).verify().valid is True
+
+
+def test_shared_snapshot_mode_requires_snapshot_sources(tmp_path: Path):
+    with pytest.raises(ValueError, match="requires snapshot_sources=True"):
+        Workforce(
+            ProjectRegistry(tmp_path / "workspaces"),
+            shared_snapshot_sources=True,
+        )
+
+
 def test_snapshot_mode_refuses_to_overwrite_existing_task_workspace(tmp_path: Path):
     source = make_project(tmp_path, "repo")
     registry = ProjectRegistry(tmp_path / "workspaces")
