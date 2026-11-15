@@ -131,7 +131,7 @@ def _test_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
     if not workflows:
         findings.append(Finding(bot_id, SubBotRole.TEST_AUDITOR.value, "warning", ".", "No GitHub Actions workflow files found."))
     elif tests:
-        test_command = re.compile(r"\\b(pytest|unittest|tox|nox)\\b|\\b(cargo\\s+test|go\\s+test|npm\\s+test|dotnet\\s+test)\\b", re.IGNORECASE)
+        test_command = re.compile(r"\b(pytest|unittest|tox|nox)\b|\b(cargo\s+test|go\s+test|npm\s+test|dotnet\s+test)\b", re.IGNORECASE)
         if not any(test_command.search(content) for _, content in workflows):
             findings.append(Finding(
                 bot_id, SubBotRole.TEST_AUDITOR.value, "warning", workflows[0][0],
@@ -163,7 +163,7 @@ def _docs_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
                 "README contains an unclosed fenced code block."
             ))
 
-        link_pattern = re.compile(r"!?[[^]]*\]\(([^)]+)\)")
+        link_pattern = re.compile(r"!?\[[^]]*\]\(([^)]+)\)")
         for match in link_pattern.finditer(content):
             destination = match.group(1).strip().split()[0].strip("<>")
             if (not destination or destination.startswith(("#", "/", "//"))
