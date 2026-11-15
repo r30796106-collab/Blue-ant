@@ -76,6 +76,10 @@ Open **Actions → Blue Ant Sub-bot Review → Run workflow**. Optionally provid
 
 The workflow currently uses the runner's default GitHub token and is intended for public targets. Private target repositories require an explicitly configured, least-privilege credential and are not enabled by default.
 
+For pull requests, the independent Blue Ant sub-bot review is dispatched after
+`tests` completes successfully and inspects the exact tested commit. Manual
+workflow dispatch remains available for public repository reviews.
+
 
 ## Parallel multi-project workforce (v1)
 
