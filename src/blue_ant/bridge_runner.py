@@ -27,6 +27,7 @@ def run_bridge_command(
     target repository.
     """
     command = load_bridge_command(command_path)
+    command_id = command["command_id"]
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
