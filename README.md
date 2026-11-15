@@ -126,7 +126,7 @@ The deterministic core does not require an LLM or paid API. Third-party framewor
 
 ## Verification status
 
-The core and first sub-bot fleet passed GitHub Actions on Python 3.12 (19 tests). The project registry/workspace milestone is under review in its own pull request; its tests must pass CI before it is considered verified.
+The core, sub-bot fleet, project registry/workspaces, and approved patch pipeline have passed GitHub Actions on Python 3.12. The patch CLI is covered by CI in the current pull request.
 
 
 ## Approved coding-worker patch pipeline (v2 foundation)
@@ -157,3 +157,24 @@ The patch engine is a guarded workspace writer, not an OS sandbox or a
 multi-file atomic transaction. Run project tests in a separately isolated CI
 runner after applying a proposal. A future GitHub adapter can turn verified
 workspace changes into branch commits and pull requests.
+
+
+### Review and apply a patch proposal from the command line
+
+A proposal is JSON data with `proposal_id`, `project_id`, `task_id`, and a
+`changes` array. Each change contains `path`, complete UTF-8 `content`, and
+`expected_sha256` (use `null` only when creating a new file). Review first:
+
+```bash
+blue-ant-patch --workspace /path/to/disposable/workspace --proposal proposal.json
+```
+
+The command is dry-run by default and does not write files. After a human has
+reviewed the paths and contents, apply explicitly:
+
+```bash
+blue-ant-patch --workspace /path/to/disposable/workspace --proposal proposal.json --approve
+```
+
+This CLI does not execute project code, run tests, create Git branches, or push
+to GitHub. Verify applied changes in a separate CI job before proposing a merge.
