@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 
+from .audit import AuditLog
 from .patches import FileChange, PatchProposal, apply_patch_proposal
 
 
@@ -34,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", required=True, help="Dedicated disposable workspace")
     parser.add_argument("--proposal", required=True, help="Path to proposal JSON")
     parser.add_argument("--approve", action="store_true", help="Explicitly approve and apply changes")
+    parser.add_argument("--audit-log", help="Override the default hash-chained workspace audit log path")
     args = parser.parse_args(argv)
 
     try:
@@ -46,10 +48,17 @@ def main(argv: list[str] | None = None) -> int:
         if not args.approve:
             print("DRY RUN ONLY — review the proposal, then rerun with --approve.")
             return 0
-        result = apply_patch_proposal(args.workspace, proposal, approved=True)
+        audit_path = Path(args.audit_log) if args.audit_log else Path(args.workspace) / ".blue-ant" / "patch-audit.jsonl"
+        audit = AuditLog(audit_path)
+        result = apply_patch_proposal(args.workspace, proposal, approved=True, audit=audit)
+        verification = audit.verify()
+        if not verification.valid:
+            raise RuntimeError(f"audit log failed verification: {verification.error}")
+        print(f"APPLIED: {len(result.changed_paths)} file(s)")
+        print(f"AUDIT VERIFIED: {verification.records} record(s) -> {audit.path}")
         print(f"APPLIED: {len(result.changed_paths)} file(s)")
         return 0
-    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError, PermissionError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, json.JSONDecodeError, PermissionError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
