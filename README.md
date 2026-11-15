@@ -118,6 +118,24 @@ and special files fail closed; copied files receive owner-only permissions.
 The source project is never modified. A task snapshot is not an OS sandbox,
 and the workspace is not automatically deleted or overwritten on reruns.
 
+For resource-aware concurrency on a constrained device, provide a CPU count
+and available memory (MiB). Blue Ant then caps the worker pool using a
+512 MiB default reserve and 256 MiB per-worker budget:
+
+```bash
+blue-ant-workforce \
+  --project elon=/path/to/ELON \
+  --max-workers 8 \
+  --cpu-count 4 \
+  --available-memory-mb 3072 \
+  --snapshot-sources
+```
+
+Override the budgets with `--reserve-memory-mb` and
+`--memory-per-worker-mb`. The JSON report records both requested and
+effective worker counts and the capacity snapshot used. Capacity values are
+caller-supplied; Blue Ant does not probe device memory or CPU automatically.
+
 ### GitHub Actions: multiple repositories
 
 Open **Actions → Blue Ant Multi-Repository Workforce → Run workflow** and provide a JSON array. Each matrix entry checks out one public repository and runs its specialist tasks concurrently; up to four repositories run at once:
