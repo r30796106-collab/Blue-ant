@@ -75,6 +75,7 @@ jobs:
           PYTHONPATH: blue-ant/src
         run: |
           python -m blue_ant.subbot_report --repo target --output artifacts/report.json
+          cat artifacts/report.json
       - name: Upload sub-bot report
         uses: actions/upload-artifact@v4
         with:
