@@ -555,3 +555,46 @@ Audit failure events record only the exception class, not the exception message.
 This keeps arbitrary error details (which can contain local paths or secrets)
 out of the persistent audit trail. The in-memory `WorkResult.error` remains
 available to the caller for controlled diagnostics.
+
+## Local event adapter (V3 prototype, no API)
+
+The `blue-ant-bridge-event` command is a local, one-shot event adapter for
+the existing read-only bridge runner. It consumes an explicitly supplied
+JSON event file and invokes only the fixed bridge audit pipeline.
+
+Create an event with exactly these fields:
+
+```json
+{
+  "schema_version": 1,
+  "event_id": "inspect-001",
+  "event_type": "bridge.command",
+  "command_id": "inspect-elon"
+}
+```
+
+Run it with an already validated bridge command, a checked-out target, a
+report directory, and an existing private state directory:
+
+```bash
+blue-ant-bridge-event \\
+  --event event.json \\
+  --command validated-command.json \\
+  --target-path ./target \\
+  --output-dir ./bridge-output \\
+  --state-dir ./.blue-ant-event-state
+```
+
+The adapter validates a strict event schema, binds the event to the command
+ID, and claims each event ID with an exclusive owner-only receipt. Replaying
+the same event returns the prior status without running workers again; reusing
+an ID with different content is rejected. A crash while processing leaves a
+`processing` receipt and intentionally blocks automatic replay (at-most-once,
+fail-closed semantics). Inspect that receipt before any operator-directed
+recovery.
+
+This is deliberately **not** a background daemon, webhook, network listener,
+ChatGPT API integration, or unattended controller. The caller must provide
+the event and invoke the command. It has no credentials, shell execution,
+patch approval/application, GitHub writes, merge, or deployment capability.
+The bridge runner continues to inspect the target read-only.
