@@ -18,6 +18,13 @@ def test_factory_enforces_limit_and_unique_roles():
         SubBotFactory().create_fleet([SubBotRole.REPO_ANALYST, SubBotRole.REPO_ANALYST])
 
 
+def test_factory_rejects_empty_or_unapproved_roles():
+    with pytest.raises(ValueError):
+        SubBotFactory().create_fleet([])
+    with pytest.raises(ValueError):
+        SubBotFactory().create_fleet(["custom_shell_bot"])
+
+
 def test_run_fleet_enforces_hard_limit():
     bots = [SubBotFactory().create_fleet([role])[0] for role in SubBotRole]
     with pytest.raises(ValueError):
