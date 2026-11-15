@@ -37,6 +37,73 @@ def test_builds_hash_checked_proposal_without_modifying_workspace(tmp_path):
     assert target.read_text(encoding="utf-8") == "old = True\n"
 
 
+def test_builds_bounded_multi_file_proposal_from_exact_task_allowlist(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "app.py").write_text("old_app = 1\n", encoding="utf-8")
+    (tmp_path / "tests" / "test_app.py").write_text("old_test = 1\n", encoding="utf-8")
+    p = plan()
+    p["tasks"][0].pop("path")
+    p["tasks"][0]["paths"] = ["src/app.py", "tests/test_app.py"]
+    result = build_patch_proposal(tmp_path, p, "review-finding-1", [
+        {"path": "src/app.py", "content": "new_app = 1\n"},
+        {"path": "tests/test_app.py", "content": "new_test = 1\n"},
+    ])
+    data = proposal_to_dict(result)
+    assert [item["path"] for item in data["changes"]] == ["src/app.py", "tests/test_app.py"]
+    assert all(item["expected_sha256"] for item in data["changes"])
+    assert (tmp_path / "src" / "app.py").read_text(encoding="utf-8") == "old_app = 1\n"
+
+
+def test_multi_file_proposal_rejects_missing_extra_duplicate_and_too_many_paths(tmp_path):
+    (tmp_path / "src").mkdir()
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / "src" / name).write_text("old\n", encoding="utf-8")
+    p = plan()
+    p["tasks"][0].pop("path")
+    p["tasks"][0]["paths"] = ["src/a.py", "src/b.py"]
+    with pytest.raises(ValueError, match="exactly one change"):
+        build_patch_proposal(tmp_path, p, "review-finding-1", [{"path": "src/a.py", "content": "new"}])
+    with pytest.raises(ValueError, match="outside"):
+        build_patch_proposal(tmp_path, p, "review-finding-1", [
+            {"path": "src/a.py", "content": "new"},
+            {"path": "src/c.py", "content": "new"},
+        ])
+    p["tasks"][0]["paths"] = ["src/a.py", "src/a.py"]
+    with pytest.raises(ValueError, match="unique"):
+        build_patch_proposal(tmp_path, p, "review-finding-1", [
+            {"path": "src/a.py", "content": "new"},
+            {"path": "src/a.py", "content": "new"},
+        ])
+    p["tasks"][0]["paths"] = [f"src/{i}.py" for i in range(11)]
+    with pytest.raises(ValueError, match="1–10"):
+        build_patch_proposal(tmp_path, p, "review-finding-1", [])
+
+
+def test_multi_file_proposal_cli_writes_unapproved_json(tmp_path):
+    from blue_ant.controlled_proposal_cli import main
+    workspace = tmp_path / "workspace"
+    (workspace / "src").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    (workspace / "src" / "app.py").write_text("old\n", encoding="utf-8")
+    (workspace / "tests" / "test_app.py").write_text("old\n", encoding="utf-8")
+    p = plan()
+    p["tasks"][0].pop("path")
+    p["tasks"][0]["paths"] = ["src/app.py", "tests/test_app.py"]
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(p), encoding="utf-8")
+    changes_file = tmp_path / "changes.json"
+    changes_file.write_text(json.dumps([
+        {"path": "src/app.py", "content": "new app\n"},
+        {"path": "tests/test_app.py", "content": "new test\n"},
+    ]), encoding="utf-8")
+    output = tmp_path / "proposal.json"
+    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--changes", str(changes_file), "--output", str(output)]) == 0
+    proposal = json.loads(output.read_text(encoding="utf-8"))
+    assert len(proposal["changes"]) == 2
+    assert all(item["expected_sha256"] for item in proposal["changes"])
+
+
 def test_proposal_id_is_deterministic(tmp_path):
     target = tmp_path / "src" / "example.py"
     target.parent.mkdir()
@@ -49,7 +116,7 @@ def test_rejects_path_outside_task_scope(tmp_path):
     target = tmp_path / "src" / "example.py"
     target.parent.mkdir()
     target.write_text("old\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="exactly match"):
+    with pytest.raises(ValueError, match="outside"):
         build_patch_proposal(tmp_path, plan(), "review-finding-1", [{"path": "README.md", "content": "x"}])
 
 
