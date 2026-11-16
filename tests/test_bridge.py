@@ -103,3 +103,36 @@ def test_load_rejects_symlinked_command_file(tmp_path):
 
     with pytest.raises(ValueError, match="non-symlink"):
         load_bridge_command(alias)
+
+
+def test_write_replaces_destination_symlink_without_writing_through_it(tmp_path):
+    from blue_ant.bridge import write_bridge_command
+
+    source = tmp_path / "source.json"
+    source.write_text(json.dumps(valid_command()), encoding="utf-8")
+    outside = tmp_path / "outside.json"
+    outside.write_text("keep unchanged", encoding="utf-8")
+    destination = tmp_path / "destination.json"
+    destination.symlink_to(outside)
+
+    write_bridge_command(source, destination)
+
+    assert outside.read_text(encoding="utf-8") == "keep unchanged"
+    assert not destination.is_symlink()
+    assert json.loads(destination.read_text(encoding="utf-8"))["command_id"] == "inspect-elon"
+    assert destination.stat().st_mode & 0o777 == 0o600
+
+
+def test_write_rejects_symlinked_destination_parent(tmp_path):
+    from blue_ant.bridge import write_bridge_command
+
+    source = tmp_path / "source.json"
+    source.write_text(json.dumps(valid_command()), encoding="utf-8")
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    alias_parent = tmp_path / "alias-parent"
+    alias_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="parent directories"):
+        write_bridge_command(source, alias_parent / "destination.json")
+    assert list(real_parent.iterdir()) == []
