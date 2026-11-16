@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -328,3 +330,49 @@ def test_worker_result_redacts_exception_message_from_report_value(tmp_path: Pat
 
     assert result.error == "RuntimeError"
     assert "secret-value" not in result.error
+
+
+
+def test_resource_policy_caps_actual_workforce_concurrency(tmp_path: Path, monkeypatch):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    from blue_ant.subbots import SubBot
+
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def measured_run(self, root, *, indexed_files=None):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.05)
+        with lock:
+            active -= 1
+        return []
+
+    monkeypatch.setattr(SubBot, "run", measured_run)
+    workforce = Workforce(
+        registry,
+        max_workers=8,
+        resource_policy=ResourcePolicy(
+            max_workers=8,
+            reserve_memory_bytes=512,
+            memory_per_worker_bytes=256,
+        ),
+        resource_snapshot=ResourceSnapshot(cpu_count=3, available_memory_bytes=1_024),
+    )
+    results = workforce.run([
+        WorkAssignment("cap-repo", "repo", SubBotRole.REPO_ANALYST),
+        WorkAssignment("cap-tests", "repo", SubBotRole.TEST_AUDITOR),
+        WorkAssignment("cap-docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("cap-safety", "repo", SubBotRole.SAFETY_AUDITOR),
+    ])
+
+    assert workforce.max_workers == 2
+    assert len(results) == 4
+    assert all(result.error is None for result in results)
+    assert peak == 2
