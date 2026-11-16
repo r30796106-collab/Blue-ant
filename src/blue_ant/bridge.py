@@ -10,6 +10,7 @@ import json
 import os
 import re
 import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -113,5 +114,24 @@ def write_bridge_command(source: str | Path, destination: str | Path) -> dict[st
     command = load_bridge_command(source)
     output = Path(destination)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(command, indent=2) + "\n", encoding="utf-8")
+    absolute_parent = Path(os.path.abspath(output.parent))
+    current = Path(absolute_parent.anchor)
+    for component in absolute_parent.parts[1:]:
+        current = current / component
+        if current.is_symlink():
+            raise ValueError("bridge command destination parent directories must not be symlinks")
+    fd, temporary = tempfile.mkstemp(prefix=".blue-ant-command-", dir=absolute_parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(json.dumps(command, indent=2) + "\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, absolute_parent / output.name)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
     return command
