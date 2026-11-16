@@ -196,3 +196,15 @@ def test_rejects_boolean_development_plan_schema_version(tmp_path):
         build_patch_proposal(tmp_path, value, "review-finding-1", [
             {"path": "src/example.py", "content": "new = True\\n"},
         ])
+
+
+@pytest.mark.parametrize("schema_version", [1.0, "1"])
+def test_rejects_non_integer_development_plan_schema_version(tmp_path, schema_version):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "example.py").write_text("old = True\\n", encoding="utf-8")
+    value = plan()
+    value["schema_version"] = schema_version
+    with pytest.raises(ValueError, match="schema_version"):
+        build_patch_proposal(tmp_path, value, "review-finding-1", [
+            {"path": "src/example.py", "content": "new = True\\n"},
+        ])
