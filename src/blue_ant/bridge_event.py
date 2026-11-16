@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,60 @@ def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
     return event, hashlib.sha256(raw).hexdigest()
 
 
+def _load_existing_receipt(
+    receipt_path: Path, *, event: dict[str, Any], event_hash: str
+) -> dict[str, Any]:
+    """Read and validate a bounded receipt without following symlinks."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(receipt_path, flags)
+    except OSError as exc:
+        raise ValueError("existing event receipt is not a readable regular file") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("existing event receipt is not a regular file")
+        if info.st_size > _MAX_EVENT_BYTES:
+            raise ValueError("existing event receipt exceeds 16 KiB")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(_MAX_EVENT_BYTES + 1)
+        if len(raw) > _MAX_EVENT_BYTES:
+            raise ValueError("existing event receipt exceeds 16 KiB")
+        try:
+            prior = strict_json_loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ValueError("existing event receipt is unreadable; refusing replay") from exc
+        if not isinstance(prior, dict):
+            raise ValueError("existing event receipt must be a JSON object")
+        common = {"schema_version", "event_id", "event_sha256", "command_id", "status"}
+        status = prior.get("status")
+        expected_keys = (
+            common | {"result"} if status == "completed"
+            else common | {"error_type"} if status == "failed"
+            else common if status == "processing"
+            else set()
+        )
+        if set(prior) != expected_keys:
+            raise ValueError("existing event receipt has an invalid schema")
+        if (
+            type(prior["schema_version"]) is not int
+            or prior["schema_version"] != 1
+            or prior["event_id"] != event["event_id"]
+            or prior["command_id"] != event["command_id"]
+            or prior["event_sha256"] != event_hash
+        ):
+            raise ValueError("existing event receipt does not match this event")
+        if status == "completed" and not isinstance(prior["result"], dict):
+            raise ValueError("existing completed event receipt has an invalid result")
+        if status == "failed" and (
+            not isinstance(prior["error_type"], str) or not prior["error_type"]
+        ):
+            raise ValueError("existing failed event receipt has an invalid error_type")
+        return prior
+    finally:
+        os.close(fd)
+
+
 def run_bridge_event(
     event_path: str | Path,
     command_path: str | Path,
@@ -74,17 +129,12 @@ def run_bridge_event(
     # This makes reuse of an event ID with any changed payload fail explicitly,
     # even when the altered payload also contains an invalid command reference.
     if receipt_path.exists() or receipt_path.is_symlink():
-        if receipt_path.is_symlink() or not receipt_path.is_file():
-            raise ValueError("existing event receipt is not a regular file")
-        try:
-            prior = strict_json_loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-            raise ValueError("existing event receipt is unreadable; refusing replay") from exc
-        if prior.get("event_sha256") != event_hash:
-            raise ValueError("event_id was already used for a different event payload")
+        prior = _load_existing_receipt(
+            receipt_path, event=event, event_hash=event_hash
+        )
         return {
             "event_id": event["event_id"],
-            "status": prior.get("status", "unknown"),
+            "status": prior["status"],
             "duplicate": True,
         }
 
@@ -98,17 +148,12 @@ def run_bridge_event(
     try:
         fd = os.open(receipt_path, flags, 0o600)
     except FileExistsError:
-        if receipt_path.is_symlink() or not receipt_path.is_file():
-            raise ValueError("existing event receipt is not a regular file")
-        try:
-            prior = strict_json_loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-            raise ValueError("existing event receipt is unreadable; refusing replay") from exc
-        if prior.get("event_sha256") != event_hash:
-            raise ValueError("event_id was already used for a different event payload")
+        prior = _load_existing_receipt(
+            receipt_path, event=event, event_hash=event_hash
+        )
         return {
             "event_id": event["event_id"],
-            "status": prior.get("status", "unknown"),
+            "status": prior["status"],
             "duplicate": True,
         }
 
