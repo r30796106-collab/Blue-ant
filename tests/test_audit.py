@@ -176,7 +176,7 @@ def test_audit_verification_rejects_duplicate_json_keys(tmp_path: Path):
     audit = AuditLog(path)
     audit.record("valid")
     with path.open("ab") as stream:
-        stream.write(b'{"event":"forged","event":"duplicate"}\\n')
+        stream.write(b'{"event":"forged","event":"duplicate"}\n')
 
     verification = audit.verify()
 
@@ -190,7 +190,7 @@ def test_audit_log_refuses_to_append_after_duplicate_key_tail(tmp_path: Path):
     audit = AuditLog(path)
     audit.record("valid")
     with path.open("ab") as stream:
-        stream.write(b'{"event":"forged","event":"duplicate"}\\n')
+        stream.write(b'{"event":"forged","event":"duplicate"}\n')
 
     with pytest.raises(ValueError, match="duplicate keys"):
         audit.record("next")
