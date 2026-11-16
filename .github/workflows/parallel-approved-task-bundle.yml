@@ -26,7 +26,16 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          bundle = json.loads(os.environ.get("ISSUE_BODY") or "")
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key!r}")
+                  result[key] = value
+              return result
+
+          bundle = json.loads(os.environ.get("ISSUE_BODY") or "", object_pairs_hook=unique_object)
           os.makedirs("instruction", exist_ok=True)
           with open("instruction/bundle.json", "w", encoding="utf-8") as f:
               json.dump(bundle, f, ensure_ascii=False)
