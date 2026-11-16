@@ -13,6 +13,8 @@ import stat
 import threading
 from typing import Any
 
+from .json_utils import strict_json_loads
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback
@@ -75,9 +77,9 @@ def _last_record_hash(fd: int) -> str:
     if not line or len(line) > _MAX_EVENT_BYTES:
         raise ValueError("audit log has an empty or oversized final record")
     try:
-        record = json.loads(line.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError("audit log final record is not valid UTF-8 JSON") from exc
+        record = strict_json_loads(line.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("audit log final record is not valid UTF-8 JSON without duplicate keys") from exc
     if not isinstance(record, dict):
         raise ValueError("audit log final record must be a JSON object")
     digest = record.get("record_hash")
@@ -180,9 +182,9 @@ class AuditLog:
                     if not raw_line.endswith(b"\n"):
                         return AuditVerification(False, count, previous, f"line {line_number} is not newline-terminated")
                     try:
-                        record = json.loads(raw_line.decode("utf-8"))
-                    except (UnicodeError, json.JSONDecodeError):
-                        return AuditVerification(False, count, previous, f"line {line_number} is not valid UTF-8 JSON")
+                        record = strict_json_loads(raw_line.decode("utf-8"))
+                    except (UnicodeError, json.JSONDecodeError, ValueError):
+                        return AuditVerification(False, count, previous, f"line {line_number} is not valid UTF-8 JSON without duplicate keys")
                     if not isinstance(record, dict):
                         return AuditVerification(False, count, previous, f"line {line_number} is not a JSON object")
                     digest = record.get("record_hash")

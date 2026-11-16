@@ -115,7 +115,17 @@ def test_rejects_duplicate_json_keys(tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="duplicate key"):
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+def test_rejects_duplicate_keys_in_existing_receipt(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    (state / "event-001.json").write_text(
+        '{"event_sha256":"same","event_sha256":"changed"}', encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="unreadable"):
         run_bridge_event(event, command, target, tmp_path / "out", state)
 
 

@@ -14,21 +14,14 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .json_utils import strict_json_loads
+
 from .bridge import load_bridge_command
 from .bridge_runner import run_bridge_command
 
 _EVENT_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 _EVENT_KEYS = {"schema_version", "event_id", "event_type", "command_id"}
 _MAX_EVENT_BYTES = 16 * 1024
-
-
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("event JSON contains a duplicate key")
-        result[key] = value
-    return result
 
 
 def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
@@ -39,7 +32,7 @@ def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
     if not raw or len(raw) > _MAX_EVENT_BYTES:
         raise ValueError("event file must be between 1 byte and 16 KiB")
     try:
-        event = json.loads(raw, object_pairs_hook=_unique_object)
+        event = strict_json_loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("event file must contain valid UTF-8 JSON") from exc
     if not isinstance(event, dict) or set(event) != _EVENT_KEYS:
@@ -84,8 +77,8 @@ def run_bridge_event(
         if receipt_path.is_symlink() or not receipt_path.is_file():
             raise ValueError("existing event receipt is not a regular file")
         try:
-            prior = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            prior = strict_json_loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("existing event receipt is unreadable; refusing replay") from exc
         if prior.get("event_sha256") != event_hash:
             raise ValueError("event_id was already used for a different event payload")
@@ -108,8 +101,8 @@ def run_bridge_event(
         if receipt_path.is_symlink() or not receipt_path.is_file():
             raise ValueError("existing event receipt is not a regular file")
         try:
-            prior = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            prior = strict_json_loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("existing event receipt is unreadable; refusing replay") from exc
         if prior.get("event_sha256") != event_hash:
             raise ValueError("event_id was already used for a different event payload")
