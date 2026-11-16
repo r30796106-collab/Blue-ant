@@ -251,3 +251,45 @@ def test_rejects_symlinked_parent_of_state_directory(tmp_path):
             event, command, target, tmp_path / "out", alias_parent / "state"
         )
     assert not (state / "event-001.json").exists()
+
+
+
+def test_state_directory_is_opened_without_following_ancestor_symlinks(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    alias_parent = tmp_path / "state-parent-alias"
+    alias_parent.symlink_to(tmp_path, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="parent directories"):
+        run_bridge_event(
+            event, command, target, tmp_path / "out", alias_parent / "state"
+        )
+    assert not (state / "event-001.json").exists()
+
+
+def test_state_directory_descriptor_remains_anchored_during_processing(tmp_path, monkeypatch):
+    import os
+    import blue_ant.bridge_event as bridge_event
+
+    event, command, target, state = write_inputs(tmp_path)
+    original_open = os.open
+    swapped = False
+
+    def swap_parent_after_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        result = original_open(path, flags, *args, **kwargs)
+        if path == state.name and kwargs.get("dir_fd") is not None and not swapped:
+            moved = tmp_path / "state-held"
+            state.rename(moved)
+            state.symlink_to(tmp_path / "outside-state", target_is_directory=True)
+            outside = tmp_path / "outside-state"
+            outside.mkdir()
+            swapped = True
+        return result
+
+    monkeypatch.setattr(bridge_event.os, "open", swap_parent_after_open)
+    result = run_bridge_event(event, command, target, tmp_path / "out", state)
+
+    assert result["status"] == "completed"
+    assert swapped
+    assert (tmp_path / "state-held" / "event-001.json").is_file()
+    assert not (tmp_path / "outside-state" / "event-001.json").exists()
