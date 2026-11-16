@@ -57,6 +57,9 @@ def _is_sensitive_file(relative: Path) -> bool:
         (".aws", "credentials"),
         (".config", "gcloud", "application_default_credentials.json"),
         (".config", "gcloud", "credentials.db"),
+        (".config", "gcloud", "access_tokens.db"),
+        (".config", "gh", "hosts.yml"),
+        (".config", "gh", "hosts.yaml"),
         (".docker", "config.json"),
         (".kube", "config"),
         (".azure", "accesstokens.json"),
@@ -65,7 +68,10 @@ def _is_sensitive_file(relative: Path) -> bool:
     }
     if parts in credential_paths:
         return True
-    if len(parts) >= 4 and parts[:3] == (".aws", "sso", "cache"):
+    if len(parts) >= 4 and parts[:3] in {
+        (".aws", "sso", "cache"),
+        (".aws", "cli", "cache"),
+    }:
         return True
     if len(parts) >= 4 and parts[:3] == (".config", "gcloud", "legacy_credentials"):
         return True
