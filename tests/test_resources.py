@@ -617,3 +617,44 @@ def test_read_v2_cpu_quota_accepts_valid_value(tmp_path):
 
     (tmp_path / "cpu.max").write_text("150000 100000", encoding="ascii")
     assert _read_v2_cpu_quota(tmp_path) == (150000, 100000)
+
+
+
+def test_bounded_proc_reader_rejects_oversized_and_non_ascii_data(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+
+    path = tmp_path / "proc-metadata"
+    monkeypatch.setattr(resources, "_MAX_PROC_CGROUP_BYTES", 8)
+    path.write_bytes(b"123456789")
+    assert resources._read_bounded_proc_lines(path, 8) is None
+
+    path.write_bytes(b"valid\xff")
+    assert resources._read_bounded_proc_lines(path, 8) is None
+
+
+def test_detect_fails_closed_for_oversized_meminfo(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    proc.mkdir()
+    cgroup.mkdir()
+    monkeypatch.setattr(resources, "_MAX_PROC_MEMINFO_BYTES", 8)
+    (proc / "meminfo").write_text("MemTotal: 1000 kB", encoding="ascii")
+
+    with pytest.raises(RuntimeError, match="meminfo"):
+        ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+
+def test_cgroup_metadata_falls_back_for_oversized_membership(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    self_dir = proc / "self"
+    self_dir.mkdir(parents=True)
+    cgroup.mkdir()
+    monkeypatch.setattr(resources, "_MAX_PROC_CGROUP_BYTES", 8)
+    (self_dir / "cgroup").write_text("0::/tenant/service", encoding="ascii")
+
+    assert resources._cgroup_v2_dirs(proc, cgroup) == (cgroup,)
