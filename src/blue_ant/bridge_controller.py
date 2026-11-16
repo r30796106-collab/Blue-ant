@@ -79,6 +79,26 @@ def evaluate_bridge_result(bundle: Any) -> ControllerDecision:
                 tuple(completed),
             )
 
+    # Independently inspect the audit evidence instead of trusting that the
+    # derived plan faithfully preserved every finding. A malformed or omitted
+    # plan task must never downgrade an actionable audit finding to "continue".
+    for cycle in cycles:
+        findings = cycle.get("findings")
+        if not isinstance(findings, list):
+            raise ValueError("audit cycle findings must be an array")
+        for finding in findings:
+            if not isinstance(finding, dict):
+                raise ValueError("each audit finding must be an object")
+            severity = finding.get("severity")
+            if severity not in {"info", "warning", "review", "error"}:
+                raise ValueError("audit finding has an invalid severity")
+            if severity != "info" or cycle["role"] == "safety_auditor":
+                return ControllerDecision(
+                    "stopped", "human_review",
+                    "The audit report contains a finding that requires human verification.",
+                    tuple(completed),
+                )
+
     tasks = plan.get("tasks")
     if not isinstance(tasks, list):
         raise ValueError("plan tasks must be an array")
