@@ -73,14 +73,28 @@ class Scheduler:
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="blue-ant") as pool:
             while pending or running:
-                # A dependency that failed or was blocked prevents downstream work.
-                for task_id in tuple(pending):
-                    task = by_id[task_id]
-                    dependency_results = [results.get(dep) for dep in task.depends_on]
-                    if any(r is not None and r.status != TaskStatus.SUCCEEDED for r in dependency_results):
-                        results[task_id] = TaskResult(task_id, TaskStatus.BLOCKED, 0, error="dependency did not succeed")
-                        pending.remove(task_id)
-                        self._record("task_blocked", task_id=task_id)
+                # Propagate blocked status through the full dependency chain
+                # before scheduling. A single pass is insufficient when a child
+                # is visited before its parent is marked blocked.
+                blocked_any = True
+                while blocked_any:
+                    blocked_any = False
+                    for task_id in sorted(pending):
+                        task = by_id[task_id]
+                        dependency_results = [results.get(dep) for dep in task.depends_on]
+                        if any(
+                            result is not None and result.status != TaskStatus.SUCCEEDED
+                            for result in dependency_results
+                        ):
+                            results[task_id] = TaskResult(
+                                task_id,
+                                TaskStatus.BLOCKED,
+                                0,
+                                error="dependency did not succeed",
+                            )
+                            pending.remove(task_id)
+                            self._record("task_blocked", task_id=task_id)
+                            blocked_any = True
 
                 while len(running) < self.max_workers:
                     ready = next(
