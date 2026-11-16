@@ -41,7 +41,14 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          command = json.load(open("instruction/command.json", encoding="utf-8"))
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          command = json.load(open("instruction/command.json", encoding="utf-8"), object_pairs_hook=unique_object)
           for key in ("command_id", "project_id", "repository", "ref", "task"):
               print(f"{key}={command[key]}")
           print("roles=" + ",".join(command["roles"]))
