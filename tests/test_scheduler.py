@@ -206,3 +206,42 @@ def test_scheduler_rejects_snapshot_without_capacity_for_one_worker() -> None:
             max_workers=4,
             resource_snapshot=ResourceSnapshot(cpu_count=4, available_memory_bytes=100),
         )
+
+
+
+def test_scheduler_resource_policy_caps_actual_concurrency() -> None:
+    from blue_ant.resources import ResourcePolicy, ResourceSnapshot
+
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def work() -> str:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.05)
+        with lock:
+            active -= 1
+        return "ok"
+
+    scheduler = Scheduler(
+        max_workers=8,
+        resource_snapshot=ResourceSnapshot(cpu_count=3, available_memory_bytes=1_024),
+        resource_policy=ResourcePolicy(
+            max_workers=8,
+            reserve_memory_bytes=512,
+            memory_per_worker_bytes=256,
+        ),
+    )
+    results = scheduler.run([
+        TaskSpec("resource-a", work),
+        TaskSpec("resource-b", work),
+        TaskSpec("resource-c", work),
+        TaskSpec("resource-d", work),
+    ])
+
+    assert scheduler.max_workers == 2
+    assert all(result.status == TaskStatus.SUCCEEDED for result in results.values())
+    assert peak == 2
