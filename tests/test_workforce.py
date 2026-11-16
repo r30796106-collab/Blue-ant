@@ -68,7 +68,7 @@ def test_worker_failure_isolated_from_other_assignments(tmp_path: Path, monkeypa
     assert results[0].task_id == "docs"
     assert results[0].error is None
     assert results[1].task_id == "safety"
-    assert results[1].error == "RuntimeError: test worker failure"
+    assert results[1].error == "RuntimeError"
 
 
 def test_rejects_duplicate_or_invalid_assignments(tmp_path: Path):
@@ -300,7 +300,7 @@ def test_workforce_audit_redacts_worker_exception_message(tmp_path: Path, monkey
         WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
     ])
 
-    assert results[0].error == "RuntimeError: credential=do-not-store-this"
+    assert results[0].error == "RuntimeError"
     audit_text = audit_path.read_text(encoding="utf-8")
     assert "credential=do-not-store-this" not in audit_text
     records = [json.loads(line) for line in audit_text.splitlines()]
@@ -308,3 +308,23 @@ def test_workforce_audit_redacts_worker_exception_message(tmp_path: Path, monkey
     assert failure["error_type"] == "RuntimeError"
     assert "error" not in failure
     assert AuditLog(audit_path).verify().valid is True
+
+
+
+def test_worker_result_redacts_exception_message_from_report_value(tmp_path: Path, monkeypatch):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    from blue_ant.subbots import SubBot
+
+    def fail_with_sensitive_message(self, root, *, indexed_files=None):
+        raise RuntimeError("token=secret-value")
+
+    monkeypatch.setattr(SubBot, "run", fail_with_sensitive_message)
+    result = Workforce(registry).run([
+        WorkAssignment("docs", "repo", SubBotRole.DOCS_AUDITOR),
+    ])[0]
+
+    assert result.error == "RuntimeError"
+    assert "secret-value" not in result.error
