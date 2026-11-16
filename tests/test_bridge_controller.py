@@ -135,3 +135,36 @@ def test_all_roles_complete_with_informational_findings_stops_normally():
     assert result.action == "stop"
     assert result.completed_roles == tuple(roles)
     assert result.next_command is None
+
+
+def test_audit_finding_cannot_be_hidden_by_empty_derived_plan():
+    value = bundle(tasks=[])
+    value["audit_report"]["cycles"][0]["findings"] = [{
+        "severity": "warning",
+        "path": "src/example.py",
+        "message": "Potential issue",
+    }]
+    result = evaluate_bridge_result(value)
+    assert result.status == "stopped"
+    assert result.action == "human_review"
+    assert result.next_command is None
+
+
+def test_safety_auditor_observation_requires_human_review_even_if_info():
+    roles = ["safety_auditor", "docs_auditor"]
+    value = bundle(
+        roles=roles,
+        cycles=[{
+            "role": "safety_auditor",
+            "status": "success",
+            "findings": [{
+                "severity": "info",
+                "path": "security/policy.py",
+                "message": "Safety observation",
+            }],
+        }],
+        tasks=[],
+    )
+    result = evaluate_bridge_result(value)
+    assert result.status == "stopped"
+    assert result.action == "human_review"
