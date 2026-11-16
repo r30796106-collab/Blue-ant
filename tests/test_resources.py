@@ -29,3 +29,70 @@ def test_invalid_resource_snapshot_is_rejected() -> None:
 def test_worker_limit_respects_memory_cap_without_forcing_one_worker() -> None:
     policy = ResourcePolicy(max_workers=8, reserve_memory_bytes=500, memory_per_worker_bytes=250)
     assert policy.worker_limit(ResourceSnapshot(cpu_count=8, available_memory_bytes=1_000)) == 2
+
+
+def test_detect_reads_host_capacity_and_tighter_cgroup_v2_limits(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    proc.mkdir()
+    cgroup.mkdir()
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
+    )
+    (cgroup / "memory.max").write_text(str(1024 * 1024 * 1024), encoding="ascii")
+    (cgroup / "memory.current").write_text(str(256 * 1024 * 1024), encoding="ascii")
+    (cgroup / "cpu.max").write_text("250000 100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 2
+    assert snapshot.available_memory_bytes == 768 * 1024 * 1024
+
+
+def test_detect_uses_host_capacity_when_cgroup_limits_are_unavailable(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    proc.mkdir()
+    cgroup.mkdir()
+    (proc / "meminfo").write_text(
+        "MemTotal: 4096000 kB\nMemAvailable: 1048576 kB\n", encoding="ascii"
+    )
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 6
+    assert snapshot.available_memory_bytes == 1024 * 1024 * 1024
+
+
+def test_detect_supports_common_cgroup_v1_limits(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    memory = cgroup / "memory"
+    cpu = cgroup / "cpu"
+    proc.mkdir()
+    memory.mkdir(parents=True)
+    cpu.mkdir()
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
+    )
+    (memory / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
+    (memory / "memory.usage_in_bytes").write_text(str(512 * 1024**2), encoding="ascii")
+    (cpu / "cpu.cfs_quota_us").write_text("150000", encoding="ascii")
+    (cpu / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 1536 * 1024 * 1024
+
+
+def test_detect_fails_closed_when_memavailable_is_missing(tmp_path) -> None:
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / "meminfo").write_text("MemTotal: 1000 kB\n", encoding="ascii")
+
+    with pytest.raises(RuntimeError, match="MemAvailable"):
+        ResourceSnapshot.detect(proc_root=proc, cgroup_root=tmp_path / "cgroup")
