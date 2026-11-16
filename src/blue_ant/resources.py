@@ -46,25 +46,45 @@ class ResourceSnapshot:
         total_memory = host_total * 1024
         cpu_count = max(1, os.cpu_count() or 1)
 
-        memory_limit = _read_first_int(
-            cgroup / "memory.max",
-            cgroup / "memory" / "memory.limit_in_bytes",
-        )
-        memory_current = _read_first_int(
-            cgroup / "memory.current",
-            cgroup / "memory" / "memory.usage_in_bytes",
-        )
-        if memory_limit is not None and memory_current is not None:
+        v2_dirs = _cgroup_v2_dirs(proc, cgroup)
+        v2_memory_limits_found = False
+        for directory in v2_dirs:
+            memory_limit = _read_first_int(directory / "memory.max")
+            memory_current = _read_first_int(directory / "memory.current")
+            if memory_limit is None or memory_current is None:
+                continue
             # Some cgroup v1 systems use a very large integer for "unlimited".
             if memory_limit > 2 * total_memory:
-                memory_limit = None
-            elif memory_limit >= 0:
-                available_memory = min(available_memory, max(0, memory_limit - memory_current))
+                continue
+            v2_memory_limits_found = True
+            available_memory = min(
+                available_memory, max(0, memory_limit - memory_current)
+            )
 
-        cpu_quota = _read_cpu_quota(cgroup)
-        if cpu_quota is not None:
-            quota, period = cpu_quota
-            cpu_count = min(cpu_count, max(1, quota // period))
+        if not v2_memory_limits_found:
+            memory_limit = _read_first_int(cgroup / "memory" / "memory.limit_in_bytes")
+            memory_current = _read_first_int(cgroup / "memory" / "memory.usage_in_bytes")
+            if memory_limit is not None and memory_current is not None:
+                if memory_limit <= 2 * total_memory:
+                    available_memory = min(
+                        available_memory, max(0, memory_limit - memory_current)
+                    )
+
+        v2_cpu_limits = [
+            quota
+            for directory in v2_dirs
+            if (quota := _read_v2_cpu_quota(directory)) is not None
+        ]
+        if v2_cpu_limits:
+            cpu_count = min(
+                cpu_count,
+                *(max(1, quota // period) for quota, period in v2_cpu_limits),
+            )
+        else:
+            cpu_quota = _read_cpu_quota(cgroup)
+            if cpu_quota is not None:
+                quota, period = cpu_quota
+                cpu_count = min(cpu_count, max(1, quota // period))
 
         return cls(cpu_count=cpu_count, available_memory_bytes=available_memory)
 
@@ -83,6 +103,45 @@ def _read_meminfo(path: Path) -> dict[str, int]:
         if fields and fields[0].isdigit():
             values[key] = int(fields[0])
     return values
+
+
+def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
+    """Return the mounted cgroup root and the process's nested v2 ancestors."""
+    try:
+        lines = (proc_root / "self" / "cgroup").read_text(encoding="ascii").splitlines()
+    except OSError:
+        return (cgroup_root,)
+
+    membership = next(
+        (line.partition("::")[2] for line in lines if line.startswith("0::")),
+        None,
+    )
+    if membership is None:
+        return (cgroup_root,)
+
+    relative = Path(membership.lstrip("/"))
+    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+        return (cgroup_root,)
+
+    directories = [cgroup_root]
+    current = cgroup_root
+    for part in relative.parts:
+        current = current / part
+        directories.append(current)
+    return tuple(directories)
+
+
+def _read_v2_cpu_quota(directory: Path) -> tuple[int, int] | None:
+    try:
+        fields = (directory / "cpu.max").read_text(encoding="ascii").split()
+        if len(fields) != 2 or fields[0] == "max":
+            return None
+        quota, period = int(fields[0]), int(fields[1])
+    except (OSError, ValueError):
+        return None
+    if quota > 0 and period > 0:
+        return quota, period
+    return None
 
 
 def _read_first_int(*paths: Path) -> int | None:
