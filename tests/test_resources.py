@@ -468,3 +468,79 @@ def test_detect_fails_safe_for_cgroup_v1_membership_outside_mount_root(tmp_path,
     snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
 
     assert snapshot.available_memory_bytes == 3 * 1024**3
+
+
+
+def test_detect_applies_nested_cgroup_v2_cpuset_limits(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    tenant = cgroup / "tenant"
+    service = tenant / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (cgroup / "cpuset.cpus.effective").write_text("0-7", encoding="ascii")
+    (tenant / "cpuset.cpus.effective").write_text("1-3,6", encoding="ascii")
+    (service / "cpuset.cpus.effective").write_text("2-3", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 16)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 2
+
+
+def test_detect_applies_cgroup_v1_cpuset_parent_limit(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    cpuset = cgroup / "cpuset"
+    tenant = cpuset / "tenant"
+    service = tenant / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "7:cpuset:/tenant/service\\n", encoding="ascii"
+    )
+    (proc / "self" / "mountinfo").write_text(
+        f"32 23 0:29 / {cpuset} rw - cgroup cgroup rw,cpuset\\n",
+        encoding="ascii",
+    )
+    (cpuset / "cpuset.cpus").write_text("0-7", encoding="ascii")
+    (tenant / "cpuset.cpus").write_text("0-1,4", encoding="ascii")
+    # An empty leaf cpuset inherits its effective parent set.
+    (service / "cpuset.cpus").write_text("", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 16)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 3
+
+
+def test_detect_ignores_invalid_cpuset_without_raising(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    proc.mkdir()
+    cgroup.mkdir()
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (cgroup / "cpuset.cpus.effective").write_text("0-3,broken", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 6
+
+
+def test_read_cpu_set_count_merges_overlapping_ranges(tmp_path) -> None:
+    from blue_ant.resources import _read_cpu_set_count
+
+    cpuset = tmp_path / "cpuset.cpus"
+    cpuset.write_text("0-3,2-5,7", encoding="ascii")
+
+    assert _read_cpu_set_count(cpuset) == 7
