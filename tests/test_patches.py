@@ -252,3 +252,20 @@ def test_patch_refuses_a_previously_tampered_audit_log(tmp_path: Path):
             audit=audit,
         )
     assert not (workspace / "new.txt").exists()
+
+
+def test_patch_rejects_symlinked_parent_directory(tmp_path: Path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    protected = outside / "protected.txt"
+    protected.write_text("preserve", encoding="utf-8")
+    (tmp_path / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlinked parent"):
+        apply_patch_proposal(
+            tmp_path,
+            proposal(FileChange("linked/protected.txt", "overwrite", sha256_text("preserve"))),
+            approved=True,
+        )
+
+    assert protected.read_text(encoding="utf-8") == "preserve"
