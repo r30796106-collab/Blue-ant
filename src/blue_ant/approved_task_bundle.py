@@ -11,6 +11,11 @@ from typing import Any
 from .json_utils import strict_json_loads
 
 
+def _strict_json_loads(payload: str) -> Any:
+    """Backward-compatible alias for the shared duplicate-key-safe parser."""
+    return strict_json_loads(payload)
+
+
 _MAX_TASKS = 8
 _MAX_FILES_PER_TASK = 10
 _MAX_TOTAL_BYTES = 2_000_000
