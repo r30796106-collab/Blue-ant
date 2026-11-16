@@ -215,7 +215,7 @@ class Workforce:
                 )
                 return WorkResult(
                     job.task_id, job.project_id, job.role.value, source_root, workspace, (),
-                    f"{type(exc).__name__}: {exc}",
+                    type(exc).__name__,
                 )
 
         results: list[WorkResult] = []
