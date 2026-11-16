@@ -387,20 +387,11 @@ def _read_first_int(*paths: Path) -> int | None:
 
 
 def _read_cpu_quota(cgroup_root: Path) -> tuple[int, int] | None:
-    try:
-        fields = (cgroup_root / "cpu.max").read_text(encoding="ascii").split()
-        if len(fields) == 2 and fields[0] != "max":
-            quota, period = int(fields[0]), int(fields[1])
-            if quota > 0 and period > 0:
-                return quota, period
-    except (OSError, ValueError):
-        pass
-
-    quota = _read_first_int(cgroup_root / "cpu" / "cpu.cfs_quota_us")
-    period = _read_first_int(cgroup_root / "cpu" / "cpu.cfs_period_us")
-    if quota is not None and period is not None and quota > 0 and period > 0:
-        return quota, period
-    return None
+    """Read legacy root quota metadata using the same bounded readers as detection."""
+    v2_quota = _read_v2_cpu_quota(cgroup_root)
+    if v2_quota is not None:
+        return v2_quota
+    return _read_v1_cpu_quota(cgroup_root / "cpu")
 
 
 @dataclass(frozen=True, slots=True)
