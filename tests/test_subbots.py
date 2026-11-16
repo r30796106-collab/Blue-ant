@@ -258,3 +258,23 @@ def test_index_does_not_follow_directory_swapped_to_symlink(tmp_path: Path, monk
     assert swapped
     assert (held / "ordinary.txt").read_text(encoding="utf-8") == "ordinary"
     assert (outside / "secret.txt").read_text(encoding="utf-8") == "must-not-index"
+
+
+
+def test_safety_audit_caps_findings_and_reports_truncation(tmp_path: Path, monkeypatch):
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_SAFETY_FINDINGS", 2)
+    (tmp_path / "many_matches.py").write_text(
+        "eval('one')\neval('two')\nexec('three')\nos.system('four')\n",
+        encoding="utf-8",
+    )
+    bot = SubBotFactory().create_fleet([SubBotRole.SAFETY_AUDITOR])[0]
+
+    findings = bot.run(tmp_path)
+
+    review_findings = [item for item in findings if item.severity == "review"]
+    warnings = [item for item in findings if item.severity == "warning"]
+    assert len(review_findings) == 2
+    assert len(warnings) == 1
+    assert "finding limit reached (2)" in warnings[0].message

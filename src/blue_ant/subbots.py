@@ -19,6 +19,7 @@ from typing import Iterable
 _MAX_INDEX_FILES = 5000
 _MAX_INDEX_BYTES = 50 * 1024 * 1024
 _MAX_INDEX_FILE_BYTES = 1_000_000
+_MAX_SAFETY_FINDINGS = 1_000
 
 
 class SubBotRole(StrEnum):
@@ -324,11 +325,30 @@ _SENSITIVE_PATTERNS = (
 
 def _safety_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
     findings = []
+    truncated = False
     for name, content in files:
         for line_no, line in enumerate(content.splitlines(), 1):
             for pattern, message in _SENSITIVE_PATTERNS:
                 if pattern.search(line):
-                    findings.append(Finding(bot_id, SubBotRole.SAFETY_AUDITOR.value, "review", name, f"Line {line_no}: {message}"))
-    if not findings:
-        findings.append(Finding(bot_id, SubBotRole.SAFETY_AUDITOR.value, "info", ".", "No configured high-risk code patterns detected; this is not a security certification."))
+                    if len(findings) >= _MAX_SAFETY_FINDINGS:
+                        truncated = True
+                        break
+                    findings.append(Finding(
+                        bot_id, SubBotRole.SAFETY_AUDITOR.value, "review",
+                        name, f"Line {line_no}: {message}"
+                    ))
+            if truncated:
+                break
+        if truncated:
+            break
+    if truncated:
+        findings.append(Finding(
+            bot_id, SubBotRole.SAFETY_AUDITOR.value, "warning", ".",
+            f"Safety audit finding limit reached ({_MAX_SAFETY_FINDINGS}); remaining matches were omitted."
+        ))
+    elif not findings:
+        findings.append(Finding(
+            bot_id, SubBotRole.SAFETY_AUDITOR.value, "info", ".",
+            "No configured high-risk code patterns detected; this is not a security certification."
+        ))
     return findings
