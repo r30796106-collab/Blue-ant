@@ -144,8 +144,26 @@ blue-ant-workforce \
 
 Override the budgets with `--reserve-memory-mb` and
 `--memory-per-worker-mb`. The JSON report records both requested and
-effective worker counts and the capacity snapshot used. Capacity values are
-caller-supplied; Blue Ant does not probe device memory or CPU automatically.
+effective worker counts and the capacity snapshot used. Capacity values can
+be caller-supplied, or detected explicitly on Linux using standard-library
+reads of `/proc/meminfo` and common cgroup v1/v2 limits. Detection is one-shot
+and opt-in; it does not start monitoring or a daemon. Unsupported hosts or
+missing `MemAvailable` data fail closed. For example:
+
+```python
+from blue_ant import ProjectRegistry, ResourcePolicy, ResourceSnapshot, Workforce
+
+snapshot = ResourceSnapshot.detect()
+workforce = Workforce(
+    ProjectRegistry(".blue-ant/workspaces"),
+    max_workers=8,
+    resource_policy=ResourcePolicy(max_workers=8),
+    resource_snapshot=snapshot,
+)
+```
+
+The CLI continues to accept explicit CPU and memory values; it does not
+silently probe the host.
 
 ### GitHub Actions: multiple repositories
 
