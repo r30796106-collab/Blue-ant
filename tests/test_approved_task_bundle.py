@@ -183,3 +183,11 @@ def test_rejects_symlinked_parent_of_staging_root(tmp_path):
     with pytest.raises(ValueError, match="parent directories"):
         stage_bundle(make_bundle(), output)
     assert list(real_parent.iterdir()) == []
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])
+def test_rejects_non_integer_schema_version(schema_version):
+    bundle = make_bundle()
+    bundle["schema_version"] = schema_version
+    with pytest.raises(ValueError, match="schema_version"):
+        validate_bundle(bundle)
