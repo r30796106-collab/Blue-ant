@@ -73,3 +73,19 @@ def test_load_proposal_rejects_unknown_fields(tmp_path):
         assert "exactly" in str(exc)
     else:
         raise AssertionError("unknown fields must be rejected")
+
+
+def test_load_proposal_rejects_duplicate_keys_at_nested_levels(tmp_path):
+    proposal_file = tmp_path / "duplicate.json"
+    proposal_file.write_text(
+        '{"proposal_id":"first","proposal_id":"second","project_id":"demo",'
+        '"task_id":"task-1","changes":[{"path":"a.py","path":"b.py",'
+        '"content":"x","expected_sha256":null}]}',
+        encoding="utf-8",
+    )
+    try:
+        load_proposal(proposal_file)
+    except ValueError as exc:
+        assert "duplicate JSON object key" in str(exc)
+    else:
+        raise AssertionError("duplicate JSON keys must be rejected")

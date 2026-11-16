@@ -208,3 +208,27 @@ def test_rejects_non_integer_development_plan_schema_version(tmp_path, schema_ve
         build_patch_proposal(tmp_path, value, "review-finding-1", [
             {"path": "src/example.py", "content": "new = True\\n"},
         ])
+
+
+def test_controlled_proposal_cli_rejects_duplicate_plan_keys(tmp_path, capsys):
+    from blue_ant.controlled_proposal_cli import main
+
+    workspace = tmp_path / "workspace"
+    (workspace / "src").mkdir(parents=True)
+    (workspace / "src" / "example.py").write_text("old\\n", encoding="utf-8")
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        '{"schema_version":1,"plan_id":"one","plan_id":"two",'
+        '"project_id":"demo","approval_required":true,"apply_approved":false,"tasks":[]}',
+        encoding="utf-8",
+    )
+    change_file = tmp_path / "change.json"
+    change_file.write_text('{"path":"src/example.py","content":"new"}', encoding="utf-8")
+    output = tmp_path / "proposal.json"
+    assert main([
+        "--workspace", str(workspace), "--plan", str(plan_file),
+        "--task-id", "review-finding-1", "--change", str(change_file),
+        "--output", str(output),
+    ]) == 2
+    assert "duplicate JSON object key" in capsys.readouterr().err
+    assert not output.exists()

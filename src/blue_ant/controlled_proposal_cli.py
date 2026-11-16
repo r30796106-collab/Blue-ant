@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from .controlled_proposal import build_patch_proposal, proposal_to_dict
+from .json_utils import strict_json_loads
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,8 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", default="blue-ant-proposal.json")
     args = parser.parse_args(argv)
     try:
-        plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
-        changes = json.loads(Path(args.changes if args.changes else args.change).read_text(encoding="utf-8"))
+        plan = strict_json_loads(Path(args.plan).read_text(encoding="utf-8"))
+        changes = strict_json_loads(Path(args.changes if args.changes else args.change).read_text(encoding="utf-8"))
         if args.change:
             changes = [changes]
         proposal = build_patch_proposal(args.workspace, plan, args.task_id, changes)

@@ -179,3 +179,19 @@ def test_rejects_non_integer_audit_report_schema_version(schema_version):
     report["schema_version"] = schema_version
     with pytest.raises(ValueError, match="schema_version 1"):
         generate_development_plan(report, None, project_id="demo")
+
+
+def test_development_plan_cli_rejects_duplicate_report_keys(tmp_path, capsys):
+    audit_file = tmp_path / "audit.json"
+    audit_file.write_text(
+        '{"schema_version":1,"project_id":"demo","project_id":"attacker",'
+        '"mode":"bounded_sequential_read_only_audit_loop","cycles":[]}',
+        encoding="utf-8",
+    )
+    output = tmp_path / "plan.json"
+    assert main([
+        "--project-id", "demo", "--audit-report", str(audit_file),
+        "--output", str(output),
+    ]) == 2
+    assert "duplicate JSON object key" in capsys.readouterr().err
+    assert not output.exists()
