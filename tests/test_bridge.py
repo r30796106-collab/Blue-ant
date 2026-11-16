@@ -37,6 +37,8 @@ def test_accepts_valid_bounded_audit_plan_command():
     ("max_cycles", 5),
     ("task", "inspect\nrun something"),
     ("schema_version", True),
+    ("schema_version", 1.0),
+    ("schema_version", "1"),
 ])
 def test_rejects_unsafe_or_invalid_values(field, value):
     command = valid_command()
