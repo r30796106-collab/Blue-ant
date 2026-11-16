@@ -320,8 +320,6 @@ def test_docs_auditor_caps_findings_across_readmes(tmp_path: Path, monkeypatch):
 
 
 def test_run_fleet_indexes_repository_once_for_all_specialists(tmp_path: Path, monkeypatch):
-    import blue_ant.subbots as subbots
-
     (tmp_path / "README.md").write_text("# Shared snapshot\\n", encoding="utf-8")
     original_index = SubBot.index_files
     calls = []
