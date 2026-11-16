@@ -316,3 +316,23 @@ def test_docs_auditor_caps_findings_across_readmes(tmp_path: Path, monkeypatch):
     assert len(warnings) == 3
     assert sum("missing repository file" in item.message for item in warnings) == 2
     assert any("finding limit reached (2)" in item.message for item in warnings)
+
+
+
+def test_run_fleet_indexes_repository_once_for_all_specialists(tmp_path: Path, monkeypatch):
+    (tmp_path / "README.md").write_text("# Shared snapshot\\n", encoding="utf-8")
+    original_index = SubBot.index_files
+    calls = []
+
+    def counted_index(root):
+        calls.append(Path(root))
+        return original_index(root)
+
+    monkeypatch.setattr(SubBot, "index_files", staticmethod(counted_index))
+
+    findings = run_fleet(tmp_path, SubBotFactory().create_fleet(), max_workers=4)
+
+    assert len(calls) == 1
+    assert calls[0] == tmp_path
+    assert any("Indexed 1 text files" in item.message for item in findings)
+    assert {item.role for item in findings} == {role.value for role in SubBotRole}
