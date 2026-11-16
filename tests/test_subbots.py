@@ -198,7 +198,7 @@ def test_index_rejects_symlink_swapped_in_before_open(tmp_path: Path, monkeypatc
 
     def swap_then_open(path, flags, *args, **kwargs):
         nonlocal swapped
-        if Path(path) == target and not swapped:
+        if path == "source.txt" and kwargs.get("dir_fd") is not None and not swapped:
             swapped = True
             target.rename(held)
             target.symlink_to(outside)
