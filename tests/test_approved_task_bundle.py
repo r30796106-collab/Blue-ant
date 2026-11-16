@@ -51,8 +51,8 @@ def test_requires_explicit_approval_and_owner_scoped_repository():
 
 def test_limits_tasks_and_rejects_duplicate_ids_or_paths():
     bundle = make_bundle()
-    bundle["tasks"] *= 3
-    with pytest.raises(ValueError, match="1–4"):
+    bundle["tasks"] *= 5
+    with pytest.raises(ValueError, match="1–8"):
         validate_bundle(bundle)
     bundle = make_bundle()
     bundle["tasks"][1]["task_id"] = "worker_one"
@@ -190,4 +190,36 @@ def test_rejects_non_integer_schema_version(schema_version):
     bundle = make_bundle()
     bundle["schema_version"] = schema_version
     with pytest.raises(ValueError, match="schema_version"):
+        validate_bundle(bundle)
+
+
+def test_accepts_eight_independent_tasks_and_rejects_nine():
+    bundle = make_bundle()
+    template = bundle["tasks"][0]
+    tasks = []
+    for index in range(8):
+        task_id = f"worker_{index}"
+        task = json.loads(json.dumps(template))
+        task["task_id"] = task_id
+        task["proposal"]["task_id"] = task_id
+        task["proposal"]["proposal_id"] = "proposal-" + task_id
+        task["proposal"]["changes"][0]["path"] = f"src/worker_{index}.py"
+        tasks.append(task)
+    bundle["tasks"] = tasks
+    assert len(validate_bundle(bundle)["tasks"]) == 8
+
+    bundle["tasks"].append({
+        "task_id": "worker_8",
+        "proposal": {
+            "proposal_id": "proposal-worker_8",
+            "project_id": "demo",
+            "task_id": "worker_8",
+            "changes": [{
+                "path": "src/worker_8.py",
+                "content": "updated = True\\n",
+                "expected_sha256": "a" * 64,
+            }],
+        },
+    })
+    with pytest.raises(ValueError, match="1–8"):
         validate_bundle(bundle)

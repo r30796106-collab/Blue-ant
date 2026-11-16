@@ -1,4 +1,4 @@
-"""Validate and stage up to four independent, human-approved patch tasks."""
+"""Validate and stage up to eight independent, human-approved patch tasks."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import sys
 from typing import Any
 
 
-_MAX_TASKS = 4
+_MAX_TASKS = 8
 _MAX_FILES_PER_TASK = 10
 _MAX_TOTAL_BYTES = 2_000_000
 _SLUG = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
