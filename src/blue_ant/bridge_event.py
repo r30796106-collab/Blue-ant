@@ -12,6 +12,8 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Any
+
 from .json_utils import strict_json_loads
 
 from .bridge import load_bridge_command
@@ -31,7 +33,7 @@ def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
         raise ValueError("event file must be between 1 byte and 16 KiB")
     try:
         event = strict_json_loads(raw.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("event file must contain valid UTF-8 JSON") from exc
     if not isinstance(event, dict) or set(event) != _EVENT_KEYS:
         raise ValueError("event must contain exactly the four supported fields")
