@@ -683,3 +683,31 @@ def test_legacy_cpu_quota_reader_uses_bounded_v2_and_v1_readers(tmp_path, monkey
     (cpu / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
 
     assert _read_cpu_quota(tmp_path) == (150000, 100000)
+
+
+def test_detect_maps_cgroup_v1_cpuset_membership_relative_to_non_root_mount(
+    tmp_path, monkeypatch
+) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup-mount"
+    cpuset_root = cgroup / "cpuset"
+    service = cpuset_root / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "7:cpuset:/tenant/service\\n", encoding="ascii"
+    )
+    (proc / "self" / "mountinfo").write_text(
+        f"32 23 0:29 /tenant {cpuset_root} rw - cgroup cgroup rw,cpuset\\n",
+        encoding="ascii",
+    )
+    (cpuset_root / "cpuset.cpus").write_text("0-7", encoding="ascii")
+    (service / "cpuset.cpus").write_text("2-3,6", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 16)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 3
