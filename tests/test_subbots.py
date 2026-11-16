@@ -166,26 +166,47 @@ def test_index_skips_single_file_over_per_file_limit(tmp_path: Path, monkeypatch
 
 
 def test_index_bounds_actual_file_read_when_file_grows_after_stat(tmp_path: Path, monkeypatch):
-    import io
     import blue_ant.subbots as subbots
 
     monkeypatch.setattr(subbots, "_MAX_INDEX_FILE_BYTES", 3)
     target = tmp_path / "growing.txt"
     target.write_text("x", encoding="utf-8")
-    original_open = Path.open
+    original_read = subbots.os.read
     requested_sizes = []
 
-    class OversizedReader(io.BytesIO):
-        def read(self, size=-1):
-            requested_sizes.append(size)
-            return super().read(size)
+    def oversized_read(descriptor, size):
+        requested_sizes.append(size)
+        return b"data" if len(requested_sizes) == 1 else original_read(descriptor, size)
 
-    def growing_open(path, *args, **kwargs):
-        if path == target:
-            return OversizedReader(b"secret-data")
-        return original_open(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", growing_open)
+    monkeypatch.setattr(subbots.os, "read", oversized_read)
 
     assert SubBot.index_files(tmp_path) == ()
     assert requested_sizes == [4]
+
+
+def test_index_rejects_symlink_swapped_in_before_open(tmp_path: Path, monkeypatch):
+    import os
+    import blue_ant.subbots as subbots
+
+    target = tmp_path / "source.txt"
+    held = tmp_path / "source.held"
+    outside = tmp_path.parent / "blue-ant-index-outside.txt"
+    target.write_text("ordinary", encoding="utf-8")
+    outside.write_text("sensitive", encoding="utf-8")
+    original_open = os.open
+    swapped = False
+
+    def swap_then_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if Path(path) == target and not swapped:
+            swapped = True
+            target.rename(held)
+            target.symlink_to(outside)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(subbots.os, "open", swap_then_open)
+
+    assert SubBot.index_files(tmp_path) == ()
+    assert swapped
+    assert held.read_text(encoding="utf-8") == "ordinary"
+    assert outside.read_text(encoding="utf-8") == "sensitive"
