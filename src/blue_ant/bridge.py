@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .json_utils import strict_json_loads
+
 _ALLOWED_ROLES = {"repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"}
 _COMMAND_ID = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 _PROJECT_ID = _COMMAND_ID
@@ -83,7 +85,7 @@ def load_bridge_command(path: str | Path) -> dict[str, Any]:
     if source.stat().st_size > 16_384:
         raise ValueError("bridge command exceeds the 16 KiB limit")
     try:
-        value = json.loads(source.read_text(encoding="utf-8"))
+        value = strict_json_loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read bridge command JSON: {exc}") from exc
     return validate_bridge_command(value)
