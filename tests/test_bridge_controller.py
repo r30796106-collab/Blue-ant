@@ -109,3 +109,29 @@ def test_controller_preserves_snapshot_mode_in_next_instruction():
     result = evaluate_bridge_result(bundle(snapshot_sources=True))
     assert result.action == "next_instruction"
     assert result.next_command["snapshot_sources"] is True
+
+def test_informational_findings_do_not_block_next_preapproved_role():
+    result = evaluate_bridge_result(bundle(
+        tasks=[{"kind": "informational_observation"}],
+    ))
+    assert result.status == "continue"
+    assert result.action == "next_instruction"
+    assert result.next_role == "docs_auditor"
+
+
+def test_all_roles_complete_with_informational_findings_stops_normally():
+    roles = ["repo_analyst", "test_auditor", "docs_auditor", "safety_auditor"]
+    cycles = [
+        {"role": role, "status": "success", "findings": []}
+        for role in roles
+    ]
+    tasks = [
+        {"kind": "informational_observation", "priority": "low"}
+        for _ in range(4)
+    ]
+    result = evaluate_bridge_result(bundle(roles=roles, cycles=cycles, tasks=tasks))
+
+    assert result.status == "completed"
+    assert result.action == "stop"
+    assert result.completed_roles == tuple(roles)
+    assert result.next_command is None
