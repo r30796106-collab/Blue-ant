@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
+_MAX_CPUSET_TEXT_BYTES = 65_536
+
+
 @dataclass(frozen=True, slots=True)
 class ResourceSnapshot:
     """A point-in-time capacity snapshot; detection is explicit and opt-in."""
@@ -262,9 +265,13 @@ def _cgroup_v1_dirs(
 def _read_cpu_set_count(path: Path) -> int | None:
     """Return the number of CPUs in a Linux cpulist, or None if unavailable/invalid."""
     try:
-        value = path.read_text(encoding="ascii").strip()
-    except OSError:
+        with path.open("r", encoding="ascii") as stream:
+            value = stream.read(_MAX_CPUSET_TEXT_BYTES + 1)
+    except (OSError, UnicodeError):
         return None
+    if len(value) > _MAX_CPUSET_TEXT_BYTES:
+        return None
+    value = value.strip()
     if not value:
         return None
 
