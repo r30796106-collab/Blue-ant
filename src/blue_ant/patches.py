@@ -66,6 +66,18 @@ def _safe_relative_path(raw: str) -> PurePosixPath:
     return path
 
 
+def _reject_symlink_components(path: Path) -> None:
+    """Reject symlinks in every component of the supplied workspace path."""
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            if current == absolute:
+                raise ValueError("workspace root must not be a symlink")
+            raise ValueError(f"workspace path contains a symlink component: {current}")
+
+
 def _resolve_target(root: Path, relative: PurePosixPath) -> Path:
     target = root.joinpath(*relative.parts)
     current = root
@@ -137,8 +149,7 @@ def apply_patch_proposal(
         raise ValueError(f"patch proposal exceeds {_MAX_PATCH_FILES} files")
 
     supplied_root = Path(workspace).expanduser()
-    if supplied_root.is_symlink():
-        raise ValueError("workspace root must not be a symlink")
+    _reject_symlink_components(supplied_root)
     root = supplied_root.resolve(strict=True)
     if not root.is_dir():
         raise NotADirectoryError(str(root))
