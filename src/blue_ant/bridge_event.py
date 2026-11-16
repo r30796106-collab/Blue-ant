@@ -204,7 +204,7 @@ def run_bridge_event(
             }
 
         with os.fdopen(fd, "w+", encoding="utf-8") as receipt:
-            receipt.write(json.dumps(initial, sort_keys=True) + "\\n")
+            receipt.write(json.dumps(initial, sort_keys=True) + "\n")
             receipt.flush()
             os.fsync(receipt.fileno())
             try:
@@ -218,13 +218,13 @@ def run_bridge_event(
                 }
                 receipt.seek(0)
                 receipt.truncate()
-                receipt.write(json.dumps(final, sort_keys=True) + "\\n")
+                receipt.write(json.dumps(final, sort_keys=True) + "\n")
                 receipt.flush()
                 os.fsync(receipt.fileno())
                 raise
             receipt.seek(0)
             receipt.truncate()
-            receipt.write(json.dumps(final, sort_keys=True) + "\\n")
+            receipt.write(json.dumps(final, sort_keys=True) + "\n")
             receipt.flush()
             os.fsync(receipt.fileno())
         return {
