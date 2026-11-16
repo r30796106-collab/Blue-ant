@@ -278,3 +278,40 @@ def test_safety_audit_caps_findings_and_reports_truncation(tmp_path: Path, monke
     assert len(review_findings) == 2
     assert len(warnings) == 1
     assert "finding limit reached (2)" in warnings[0].message
+
+
+
+def test_docs_auditor_handles_empty_link_destinations(tmp_path: Path):
+    (tmp_path / "README.md").write_text(
+        "# Docs\n\n[Empty]()\n\n[Whitespace](   )\n",
+        encoding="utf-8",
+    )
+    bot = SubBotFactory().create_fleet([SubBotRole.DOCS_AUDITOR])[0]
+
+    findings = bot.run(tmp_path)
+
+    empty_links = [item for item in findings if "empty destination" in item.message]
+    assert len(empty_links) == 2
+
+
+def test_docs_auditor_caps_findings_across_readmes(tmp_path: Path, monkeypatch):
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_DOCS_FINDINGS", 2)
+    (tmp_path / "README.md").write_text(
+        "[A](missing-a.md)\n[B](missing-b.md)\n[C](missing-c.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "guide").mkdir()
+    (tmp_path / "guide" / "README.md").write_text(
+        "[D](missing-d.md)\n",
+        encoding="utf-8",
+    )
+    bot = SubBotFactory().create_fleet([SubBotRole.DOCS_AUDITOR])[0]
+
+    findings = bot.run(tmp_path)
+
+    warnings = [item for item in findings if item.severity == "warning"]
+    assert len(warnings) == 3
+    assert sum("missing repository file" in item.message for item in warnings) == 2
+    assert any("finding limit reached (2)" in item.message for item in warnings)
