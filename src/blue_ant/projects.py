@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 import tempfile
 
+from .json_utils import strict_json_loads
+
 
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 _REGISTRY_SCHEMA_VERSION = 1
@@ -58,7 +60,7 @@ class ProjectRegistry:
         if not path.is_file():
             raise ValueError("registry_path must be a regular file")
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = strict_json_loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("project registry cannot be read as valid UTF-8 JSON") from exc
 
