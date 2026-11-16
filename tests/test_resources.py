@@ -307,3 +307,70 @@ def test_detect_preserves_direct_membership_mapping_without_mountinfo(tmp_path, 
     snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
 
     assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+
+def test_detect_applies_nested_cgroup_v1_parent_memory_and_cpu_limits(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    memory = cgroup / "memory"
+    cpu = cgroup / "cpu"
+    (proc / "self").mkdir(parents=True)
+    (memory / "tenant" / "service").mkdir(parents=True)
+    (cpu / "tenant" / "service").mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "5:memory:/tenant/service\n6:cpu,cpuacct:/tenant/service\n",
+        encoding="ascii",
+    )
+    (proc / "self" / "mountinfo").write_text(
+        f"30 23 0:27 / {memory} rw - cgroup cgroup rw,memory\n"
+        f"31 23 0:28 / {cpu} rw - cgroup cgroup rw,cpu,cpuacct\n",
+        encoding="ascii",
+    )
+
+    for directory, limit, current in (
+        (memory, 5 * 1024**3, 1024**3),
+        (memory / "tenant", 2 * 1024**3, 1536 * 1024**2),
+        (memory / "tenant" / "service", 3 * 1024**3, 1024**3),
+    ):
+        (directory / "memory.limit_in_bytes").write_text(str(limit), encoding="ascii")
+        (directory / "memory.usage_in_bytes").write_text(str(current), encoding="ascii")
+    for directory, quota in (
+        (cpu, 600000),
+        (cpu / "tenant", 150000),
+        (cpu / "tenant" / "service", 400000),
+    ):
+        (directory / "cpu.cfs_quota_us").write_text(str(quota), encoding="ascii")
+        (directory / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+def test_detect_keeps_cgroup_v1_direct_fallback_without_membership(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    memory = cgroup / "memory"
+    cpu = cgroup / "cpu"
+    proc.mkdir()
+    memory.mkdir(parents=True)
+    cpu.mkdir()
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
+    )
+    (memory / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
+    (memory / "memory.usage_in_bytes").write_text(str(512 * 1024**2), encoding="ascii")
+    (cpu / "cpu.cfs_quota_us").write_text("150000", encoding="ascii")
+    (cpu / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 1536 * 1024**2

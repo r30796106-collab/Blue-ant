@@ -63,13 +63,16 @@ class ResourceSnapshot:
             )
 
         if not v2_memory_limits_found:
-            memory_limit = _read_first_int(cgroup / "memory" / "memory.limit_in_bytes")
-            memory_current = _read_first_int(cgroup / "memory" / "memory.usage_in_bytes")
-            if memory_limit is not None and memory_current is not None:
-                if memory_limit <= 2 * total_memory:
-                    available_memory = min(
-                        available_memory, max(0, memory_limit - memory_current)
-                    )
+            for directory in _cgroup_v1_dirs(proc, cgroup, "memory"):
+                memory_limit = _read_first_int(directory / "memory.limit_in_bytes")
+                memory_current = _read_first_int(directory / "memory.usage_in_bytes")
+                if memory_limit is None or memory_current is None:
+                    continue
+                if memory_limit > 2 * total_memory:
+                    continue
+                available_memory = min(
+                    available_memory, max(0, memory_limit - memory_current)
+                )
 
         v2_cpu_limits = [
             quota
@@ -82,10 +85,16 @@ class ResourceSnapshot:
                 *(max(1, quota // period) for quota, period in v2_cpu_limits),
             )
         else:
-            cpu_quota = _read_cpu_quota(cgroup)
-            if cpu_quota is not None:
-                quota, period = cpu_quota
-                cpu_count = min(cpu_count, max(1, quota // period))
+            v1_cpu_limits = [
+                quota
+                for directory in _cgroup_v1_dirs(proc, cgroup, "cpu")
+                if (quota := _read_v1_cpu_quota(directory)) is not None
+            ]
+            if v1_cpu_limits:
+                cpu_count = min(
+                    cpu_count,
+                    *(max(1, quota // period) for quota, period in v1_cpu_limits),
+                )
 
         return cls(cpu_count=cpu_count, available_memory_bytes=available_memory)
 
@@ -160,6 +169,85 @@ def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
         current = current / part
         directories.append(current)
     return tuple(directories)
+
+
+def _cgroup_v1_dirs(
+    proc_root: Path, cgroup_root: Path, controller: str
+) -> tuple[Path, ...]:
+    """Return the visible cgroup v1 controller mount and process ancestors."""
+    controller_root = cgroup_root / controller
+    try:
+        lines = (proc_root / "self" / "cgroup").read_text(encoding="ascii").splitlines()
+    except OSError:
+        return (controller_root,)
+
+    membership = None
+    for line in lines:
+        _, separator, remainder = line.partition(":")
+        if not separator:
+            continue
+        controllers, separator, path = remainder.partition(":")
+        if not separator:
+            continue
+        names = controllers.split(",")
+        if controller in names or (controller == "cpu" and "cpuacct" in names):
+            membership = path
+            break
+    if membership is None:
+        return (controller_root,)
+
+    process_path = PurePosixPath(membership)
+    if not process_path.is_absolute() or ".." in process_path.parts:
+        return (controller_root,)
+
+    mount_root = PurePosixPath("/")
+    try:
+        mount_lines = (proc_root / "self" / "mountinfo").read_text(
+            encoding="ascii"
+        ).splitlines()
+    except OSError:
+        mount_lines = []
+
+    for line in mount_lines:
+        before, separator, after = line.partition(" - ")
+        if not separator:
+            continue
+        left, right = before.split(), after.split()
+        if len(left) < 5 or not right or right[0] != "cgroup":
+            continue
+        options = set(right[2].split(",")) if len(right) > 2 else set()
+        if controller not in options and not (
+            controller == "cpu" and "cpuacct" in options
+        ):
+            continue
+        if Path(_unescape_mountinfo(left[4])) != controller_root:
+            continue
+        candidate = PurePosixPath(_unescape_mountinfo(left[3]))
+        if candidate.is_absolute() and ".." not in candidate.parts:
+            mount_root = candidate
+        break
+
+    try:
+        relative = process_path.relative_to(mount_root)
+    except ValueError:
+        return (controller_root,)
+    if any(part in {"", ".", ".."} for part in relative.parts):
+        return (controller_root,)
+
+    directories = [controller_root]
+    current = controller_root
+    for part in relative.parts:
+        current = current / part
+        directories.append(current)
+    return tuple(directories)
+
+
+def _read_v1_cpu_quota(directory: Path) -> tuple[int, int] | None:
+    quota = _read_first_int(directory / "cpu.cfs_quota_us")
+    period = _read_first_int(directory / "cpu.cfs_period_us")
+    if quota is not None and period is not None and quota > 0 and period > 0:
+        return quota, period
+    return None
 
 
 def _unescape_mountinfo(value: str) -> str:
