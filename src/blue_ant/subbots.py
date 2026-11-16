@@ -139,10 +139,12 @@ def _iter_text_files(root: Path):
                 size = resolved.stat().st_size
                 if size > _MAX_INDEX_FILE_BYTES or indexed_bytes + size > _MAX_INDEX_BYTES:
                     continue
-                content = resolved.read_text(encoding="utf-8")
-                actual_size = len(content.encode("utf-8"))
+                with resolved.open("rb") as stream:
+                    raw = stream.read(_MAX_INDEX_FILE_BYTES + 1)
+                actual_size = len(raw)
                 if actual_size > _MAX_INDEX_FILE_BYTES or indexed_bytes + actual_size > _MAX_INDEX_BYTES:
                     continue
+                content = raw.decode("utf-8")
             except (OSError, UnicodeError, ValueError):
                 continue
             indexed_files += 1
