@@ -162,8 +162,21 @@ workforce = Workforce(
 )
 ```
 
-The CLI continues to accept explicit CPU and memory values; it does not
-silently probe the host.
+The CLI continues to accept explicit CPU and memory values and does not silently
+probe the host. To opt in to a one-time Linux host/cgroup detection instead, use
+`--detect-resources` (mutually exclusive with the two manual capacity flags):
+
+```bash
+blue-ant-workforce \
+  --project elon=/path/to/ELON \
+  --max-workers 8 \
+  --detect-resources \
+  --snapshot-sources
+```
+
+This flag reads `/proc/meminfo` and common cgroup v1/v2 files once at startup; it
+does not monitor resources continuously. Unsupported hosts or missing memory
+information fail closed. Reserve and per-worker memory budgets remain configurable.
 
 ### GitHub Actions: multiple repositories
 

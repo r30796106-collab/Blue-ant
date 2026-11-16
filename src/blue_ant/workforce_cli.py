@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--max-workers", type=int, default=4)
     parser.add_argument("--cpu-count", type=int, help="available CPU count for optional resource-aware worker limiting")
     parser.add_argument("--available-memory-mb", type=int, help="available memory in MiB for optional resource-aware worker limiting")
+    parser.add_argument("--detect-resources", action="store_true", help="explicitly detect Linux host/cgroup capacity once; mutually exclusive with manual CPU/memory values")
     parser.add_argument("--reserve-memory-mb", type=int, default=512, help="memory to reserve in MiB (default: 512)")
     parser.add_argument("--memory-per-worker-mb", type=int, default=256, help="memory budget per worker in MiB (default: 256)")
     parser.add_argument("--snapshot-sources", action="store_true",
@@ -52,9 +53,18 @@ def main() -> int:
 
         if (args.cpu_count is None) != (args.available_memory_mb is None):
             raise ValueError("--cpu-count and --available-memory-mb must be provided together")
+        if args.detect_resources and args.cpu_count is not None:
+            raise ValueError("--detect-resources cannot be combined with --cpu-count or --available-memory-mb")
         resource_policy = None
         resource_snapshot = None
-        if args.cpu_count is not None:
+        if args.detect_resources:
+            resource_policy = ResourcePolicy(
+                max_workers=args.max_workers,
+                reserve_memory_bytes=args.reserve_memory_mb * 1024 * 1024,
+                memory_per_worker_bytes=args.memory_per_worker_mb * 1024 * 1024,
+            )
+            resource_snapshot = ResourceSnapshot.detect()
+        elif args.cpu_count is not None:
             resource_policy = ResourcePolicy(
                 max_workers=args.max_workers,
                 reserve_memory_bytes=args.reserve_memory_mb * 1024 * 1024,
@@ -92,6 +102,7 @@ def main() -> int:
                     "error": audit_verification.error,
                 } if audit_verification is not None else None
             ),
+            "resource_detection": ("linux_procfs_cgroup_opt_in" if args.detect_resources else "caller_supplied" if resource_snapshot is not None else None),
             "resource_snapshot": (
                 {
                     "cpu_count": resource_snapshot.cpu_count,
@@ -133,7 +144,7 @@ def main() -> int:
         failed = sum(item.error is not None for item in results)
         print(f"Blue Ant workforce: {len(projects)} projects, {len(results)} parallel assignments, {failed} errors -> {output}")
         return 1 if failed else 0
-    except (ValueError, OSError, KeyError) as exc:
+    except (ValueError, OSError, KeyError, RuntimeError) as exc:
         parser.error(str(exc))
         return 2
 
