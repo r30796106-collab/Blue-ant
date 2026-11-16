@@ -289,7 +289,7 @@ def _docs_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
         else:
             findings.append(finding)
 
-    link_pattern = re.compile(r"!?\\[[^\\]]*\\]\\(([^)]*)\\)")
+    link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]*)\)")
     for readme_path, content in readmes:
         fence_open = False
         for line in content.splitlines():
