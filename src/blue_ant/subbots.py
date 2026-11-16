@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import posixpath
 import re
+import stat
 from typing import Iterable
 
 
@@ -115,6 +116,53 @@ def run_fleet(
     return sorted(findings, key=lambda item: (item.path, item.bot_id, item.message))
 
 
+def _read_index_file(path: Path, *, max_remaining_bytes: int) -> tuple[str, int]:
+    """Open one index file without following a final-component symlink."""
+    path_info = path.lstat()
+    if not stat.S_ISREG(path_info.st_mode):
+        raise ValueError("index source is not a regular file")
+    if path_info.st_size > _MAX_INDEX_FILE_BYTES or path_info.st_size > max_remaining_bytes:
+        raise ValueError("index source exceeds configured limits")
+
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("opened index source is not a regular file")
+        if (before.st_dev, before.st_ino) != (path_info.st_dev, path_info.st_ino):
+            raise ValueError("index source changed while opening")
+        if before.st_size > _MAX_INDEX_FILE_BYTES or before.st_size > max_remaining_bytes:
+            raise ValueError("opened index source exceeds configured limits")
+
+        limit = min(_MAX_INDEX_FILE_BYTES, max_remaining_bytes)
+        chunks: list[bytes] = []
+        total = 0
+        while total <= limit:
+            chunk = os.read(descriptor, min(64 * 1024, limit + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        if total > limit:
+            raise ValueError("index source grew beyond configured limits")
+
+        after = os.fstat(descriptor)
+        identity_before = (
+            before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns, before.st_nlink,
+        )
+        identity_after = (
+            after.st_dev, after.st_ino, after.st_size,
+            after.st_mtime_ns, after.st_ctime_ns, after.st_nlink,
+        )
+        if identity_before != identity_after:
+            raise ValueError("index source changed while reading")
+        raw = b"".join(chunks)
+        return raw.decode("utf-8"), total
+    finally:
+        os.close(descriptor)
+
+
 def _iter_text_files(root: Path):
     """Walk only relevant source directories; prune generated trees before descent."""
     ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
@@ -136,15 +184,9 @@ def _iter_text_files(root: Path):
             try:
                 resolved = path.resolve(strict=True)
                 resolved.relative_to(repo)
-                size = resolved.stat().st_size
-                if size > _MAX_INDEX_FILE_BYTES or indexed_bytes + size > _MAX_INDEX_BYTES:
-                    continue
-                with resolved.open("rb") as stream:
-                    raw = stream.read(_MAX_INDEX_FILE_BYTES + 1)
-                actual_size = len(raw)
-                if actual_size > _MAX_INDEX_FILE_BYTES or indexed_bytes + actual_size > _MAX_INDEX_BYTES:
-                    continue
-                content = raw.decode("utf-8")
+                content, actual_size = _read_index_file(
+                    path, max_remaining_bytes=_MAX_INDEX_BYTES - indexed_bytes
+                )
             except (OSError, UnicodeError, ValueError):
                 continue
             indexed_files += 1
