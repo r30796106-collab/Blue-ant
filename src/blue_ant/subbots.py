@@ -110,9 +110,15 @@ def run_fleet(
         raise ValueError("max_workers must be between 1 and 16")
     if any(not isinstance(bot, SubBot) for bot in fleet):
         raise ValueError("fleet must contain approved SubBot instances")
+    # Index once so every specialist reviews the same bounded repository snapshot.
+    # This avoids repeating filesystem traversal and prevents role-to-role drift
+    # when files change while the concurrent review is running.
+    indexed_files = SubBot.index_files(root)
     findings: list[Finding] = []
     with ThreadPoolExecutor(max_workers=min(max_workers, len(fleet)), thread_name_prefix="blue-ant-subbot") as pool:
-        futures = [pool.submit(bot.run, root) for bot in fleet]
+        futures = [
+            pool.submit(bot.run, root, indexed_files=indexed_files) for bot in fleet
+        ]
         for future in futures:
             findings.extend(future.result())
     return sorted(findings, key=lambda item: (item.path, item.bot_id, item.message))
