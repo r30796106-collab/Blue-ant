@@ -171,3 +171,15 @@ def test_rejects_boolean_schema_version():
     bundle["schema_version"] = True
     with pytest.raises(ValueError, match="schema_version"):
         validate_bundle(bundle)
+
+
+def test_rejects_symlinked_parent_of_staging_root(tmp_path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    output = linked_parent / "staged"
+
+    with pytest.raises(ValueError, match="parent directories"):
+        stage_bundle(make_bundle(), output)
+    assert list(real_parent.iterdir()) == []
