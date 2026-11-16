@@ -132,7 +132,7 @@ def test_detect_ignores_unlimited_cgroup_v2_memory_and_cpu_limits(tmp_path, monk
     cgroup.mkdir()
     host_available = 1536 * 1024**2
     (proc / "meminfo").write_text(
-        "MemTotal: 4194304 kB\\nMemAvailable: 1572864 kB\\n", encoding="ascii"
+        "MemTotal: 4194304 kB\nMemAvailable: 1572864 kB\n", encoding="ascii"
     )
     (cgroup / "memory.max").write_text("max", encoding="ascii")
     (cgroup / "memory.current").write_text(str(512 * 1024**2), encoding="ascii")
