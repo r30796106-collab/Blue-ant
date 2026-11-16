@@ -13,7 +13,7 @@ authors = [{ name = "Blue Ant Contributors" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.6"]
 
 [project.scripts]
 blue-ant-review = "blue_ant.subbot_report:main"
