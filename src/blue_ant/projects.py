@@ -64,7 +64,7 @@ class ProjectRegistry:
 
         if not isinstance(data, dict) or set(data) != {"schema_version", "projects"}:
             raise ValueError("project registry has an invalid schema")
-        if isinstance(data["schema_version"], bool) or data["schema_version"] != _REGISTRY_SCHEMA_VERSION:
+        if type(data["schema_version"]) is not int or data["schema_version"] != _REGISTRY_SCHEMA_VERSION:
             raise ValueError("unsupported project registry schema_version")
         projects = data["projects"]
         if not isinstance(projects, list):
