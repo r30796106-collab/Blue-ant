@@ -93,3 +93,13 @@ def test_load_rejects_duplicate_top_level_json_keys(tmp_path):
 
     with pytest.raises(ValueError, match="duplicate JSON object key"):
         load_bridge_command(source)
+
+
+def test_load_rejects_symlinked_command_file(tmp_path):
+    source = tmp_path / "command.json"
+    source.write_text(json.dumps(valid_command()), encoding="utf-8")
+    alias = tmp_path / "command-alias.json"
+    alias.symlink_to(source)
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        load_bridge_command(alias)
