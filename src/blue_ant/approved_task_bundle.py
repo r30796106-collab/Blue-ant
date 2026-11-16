@@ -18,6 +18,21 @@ _REF = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object while rejecting ambiguous duplicate keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _strict_json_loads(payload: str) -> Any:
+    """Parse JSON without silently accepting duplicate keys at any depth."""
+    return json.loads(payload, object_pairs_hook=_unique_object)
+
+
 def _safe_path(value: Any) -> str:
     if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
         raise ValueError("patch paths must be non-empty POSIX relative paths")
@@ -170,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args(argv)
     try:
-        result = stage_bundle(json.loads(Path(args.input).read_text(encoding="utf-8")), args.output_dir)
+        result = stage_bundle(_strict_json_loads(Path(args.input).read_text(encoding="utf-8")), args.output_dir)
         print(json.dumps({"status": "validated", "task_count": len(result["tasks"]), "output_dir": str(args.output_dir)}))
         return 0
     except (OSError, UnicodeError, ValueError, TypeError, KeyError, json.JSONDecodeError, PermissionError) as exc:
