@@ -183,11 +183,11 @@ def test_detect_maps_membership_relative_to_non_root_cgroup2_mount(tmp_path, mon
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\n", encoding="ascii")
     (proc / "self" / "mountinfo").write_text(
-        f"29 23 0:26 /tenant {cgroup} rw,nosuid,nodev - cgroup2 cgroup rw\\n",
+        f"29 23 0:26 /tenant {cgroup} rw,nosuid,nodev - cgroup2 cgroup rw\n",
         encoding="ascii",
     )
 
