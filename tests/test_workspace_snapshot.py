@@ -238,3 +238,36 @@ def test_snapshot_detects_same_size_mutation_even_if_mtime_is_restored(tmp_path:
     assert changed
     assert not destination.exists()
     assert source_file.read_text(encoding="utf-8") == "after!"
+
+
+
+def test_snapshot_does_not_follow_directory_swapped_to_symlink_before_open(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    nested = source / "nested"
+    nested.mkdir(parents=True)
+    (nested / "ordinary.txt").write_text("ordinary", encoding="utf-8")
+    held = source / "nested-held"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("must-not-copy", encoding="utf-8")
+    destination = tmp_path / "snapshot"
+    original_open = os.open
+    swapped = False
+
+    def swap_directory_then_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == "nested" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            nested.rename(held)
+            nested.symlink_to(outside, target_is_directory=True)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", swap_directory_then_open)
+
+    with pytest.raises(OSError):
+        create_workspace_snapshot(source, destination)
+
+    assert swapped
+    assert not destination.exists()
+    assert (held / "ordinary.txt").read_text(encoding="utf-8") == "ordinary"
+    assert (outside / "secret.txt").read_text(encoding="utf-8") == "must-not-copy"
