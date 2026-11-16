@@ -34,9 +34,9 @@ class ResourceSnapshot:
     available_memory_bytes: int
 
     def __post_init__(self) -> None:
-        if self.cpu_count < 1:
+        if type(self.cpu_count) is not int or self.cpu_count < 1:
             raise ValueError("cpu_count must be at least 1")
-        if self.available_memory_bytes < 0:
+        if type(self.available_memory_bytes) is not int or self.available_memory_bytes < 0:
             raise ValueError("available_memory_bytes must not be negative")
 
     @classmethod
@@ -403,11 +403,11 @@ class ResourcePolicy:
     memory_per_worker_bytes: int = 256 * 1024 * 1024
 
     def __post_init__(self) -> None:
-        if self.max_workers < 1:
+        if type(self.max_workers) is not int or self.max_workers < 1:
             raise ValueError("max_workers must be at least 1")
-        if self.reserve_memory_bytes < 0:
+        if type(self.reserve_memory_bytes) is not int or self.reserve_memory_bytes < 0:
             raise ValueError("reserve_memory_bytes must not be negative")
-        if self.memory_per_worker_bytes < 1:
+        if type(self.memory_per_worker_bytes) is not int or self.memory_per_worker_bytes < 1:
             raise ValueError("memory_per_worker_bytes must be at least 1")
 
     def worker_limit(self, snapshot: ResourceSnapshot) -> int:

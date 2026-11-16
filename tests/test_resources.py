@@ -711,3 +711,29 @@ def test_detect_maps_cgroup_v1_cpuset_membership_relative_to_non_root_mount(
     snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
 
     assert snapshot.cpu_count == 3
+
+@pytest.mark.parametrize(
+    ("snapshot_kwargs", "message"),
+    [
+        ({"cpu_count": True, "available_memory_bytes": 100}, "cpu_count"),
+        ({"cpu_count": 2, "available_memory_bytes": False}, "available_memory_bytes"),
+        ({"cpu_count": 2, "available_memory_bytes": 1.5}, "available_memory_bytes"),
+    ],
+)
+def test_resource_snapshot_rejects_boolean_and_non_integer_capacity(snapshot_kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        ResourceSnapshot(**snapshot_kwargs)
+
+
+@pytest.mark.parametrize(
+    ("policy_kwargs", "message"),
+    [
+        ({"max_workers": True}, "max_workers"),
+        ({"reserve_memory_bytes": False}, "reserve_memory_bytes"),
+        ({"reserve_memory_bytes": 1.5}, "reserve_memory_bytes"),
+        ({"memory_per_worker_bytes": True}, "memory_per_worker_bytes"),
+    ],
+)
+def test_resource_policy_rejects_boolean_and_non_integer_limits(policy_kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        ResourcePolicy(**policy_kwargs)
