@@ -92,7 +92,7 @@ class FeedbackLoop:
                 observation = LoopObservation(
                     instruction_id=current.instruction_id,
                     status="failed",
-                    summary=f"{type(exc).__name__}: {exc}",
+                    summary=type(exc).__name__,
                 )
 
             observations.append(observation)
