@@ -46,14 +46,33 @@ def _raise_walk_error(error: OSError) -> None:
     raise error
 
 
-def _is_sensitive_file(name: str) -> bool:
-    lowered = name.lower()
-    if lowered == ".env.example":
+def _is_sensitive_file(relative: Path) -> bool:
+    """Recognize common repository-local credential stores by relative path."""
+    parts = tuple(part.lower() for part in relative.parts)
+    name = parts[-1] if parts else ""
+    if name == ".env.example":
         return False
+    credential_paths = {
+        (".git-credentials",),
+        (".aws", "credentials"),
+        (".config", "gcloud", "application_default_credentials.json"),
+        (".config", "gcloud", "credentials.db"),
+        (".docker", "config.json"),
+        (".kube", "config"),
+        (".azure", "accesstokens.json"),
+        (".azure", "msal_token_cache.json"),
+        (".terraform.d", "credentials.tfrc.json"),
+    }
+    if parts in credential_paths:
+        return True
+    if len(parts) >= 4 and parts[:3] == (".aws", "sso", "cache"):
+        return True
+    if len(parts) >= 4 and parts[:3] == (".config", "gcloud", "legacy_credentials"):
+        return True
     return (
-        lowered in _EXCLUDED_FILES
-        or (lowered.startswith(".env.") and lowered != ".env.example")
-        or Path(lowered).suffix in _EXCLUDED_SUFFIXES
+        name in _EXCLUDED_FILES
+        or (name.startswith(".env.") and name != ".env.example")
+        or Path(name).suffix in _EXCLUDED_SUFFIXES
     )
 
 
@@ -156,7 +175,7 @@ def create_workspace_snapshot(
             for name in sorted(file_names):
                 source_file = current / name
                 relative = source_file.relative_to(source)
-                if _is_sensitive_file(name):
+                if _is_sensitive_file(relative):
                     skipped_sensitive.append(relative.as_posix())
                     continue
                 if source_file.is_symlink():
