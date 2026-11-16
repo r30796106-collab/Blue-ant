@@ -376,3 +376,45 @@ def test_scheduler_respects_randomized_dag_dependencies(seed: int, workers: int)
     assert len(results) == task_count
     assert all(result.status == TaskStatus.SUCCEEDED for result in results.values())
     assert completed == set(dependencies)
+
+
+def test_scheduler_handles_maximum_fan_out_dependency_batch() -> None:
+    child_calls: list[str] = []
+    tasks = [TaskSpec("root", lambda: "ready")]
+    tasks.extend(
+        TaskSpec(
+            f"child-{index:03d}",
+            lambda index=index: child_calls.append(str(index)),
+            depends_on=("root",),
+        )
+        for index in range(255)
+    )
+
+    results = Scheduler(max_workers=8, max_tasks=256).run(tasks)
+
+    assert len(results) == 256
+    assert all(result.status == TaskStatus.SUCCEEDED for result in results.values())
+    assert len(child_calls) == 255
+
+
+def test_scheduler_blocks_maximum_fan_out_after_root_failure() -> None:
+    child_calls: list[str] = []
+
+    def fail() -> None:
+        raise RuntimeError("root failed")
+
+    tasks = [TaskSpec("root", fail)]
+    tasks.extend(
+        TaskSpec(
+            f"child-{index:03d}",
+            lambda index=index: child_calls.append(str(index)),
+            depends_on=("root",),
+        )
+        for index in range(255)
+    )
+
+    results = Scheduler(max_workers=8, max_tasks=256).run(tasks)
+
+    assert results["root"].status == TaskStatus.FAILED
+    assert all(results[f"child-{index:03d}"].status == TaskStatus.BLOCKED for index in range(255))
+    assert child_calls == []
