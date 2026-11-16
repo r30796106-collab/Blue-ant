@@ -171,6 +171,31 @@ def test_oversized_audit_event_is_rejected_without_partial_record(tmp_path):
     assert verification.records == 0
 
 
+def test_audit_verification_rejects_duplicate_json_keys(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    audit = AuditLog(path)
+    audit.record("valid")
+    with path.open("ab") as stream:
+        stream.write(b'{"event":"forged","event":"duplicate"}\\n')
+
+    verification = audit.verify()
+
+    assert verification.valid is False
+    assert verification.records == 1
+    assert "duplicate keys" in verification.error
+
+
+def test_audit_log_refuses_to_append_after_duplicate_key_tail(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    audit = AuditLog(path)
+    audit.record("valid")
+    with path.open("ab") as stream:
+        stream.write(b'{"event":"forged","event":"duplicate"}\\n')
+
+    with pytest.raises(ValueError, match="duplicate keys"):
+        audit.record("next")
+
+
 def test_audit_verification_rejects_non_object_json_record(tmp_path: Path):
     path = tmp_path / "events.jsonl"
     audit = AuditLog(path)
