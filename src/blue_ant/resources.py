@@ -1,13 +1,15 @@
-"""Deterministic worker limits from caller-supplied device capacity."""
+"""Deterministic worker limits from caller-supplied or detected device capacity."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
 class ResourceSnapshot:
-    """A point-in-time capacity snapshot; collection is platform-specific."""
+    """A point-in-time capacity snapshot; detection is explicit and opt-in."""
 
     cpu_count: int
     available_memory_bytes: int
@@ -17,6 +19,104 @@ class ResourceSnapshot:
             raise ValueError("cpu_count must be at least 1")
         if self.available_memory_bytes < 0:
             raise ValueError("available_memory_bytes must not be negative")
+
+    @classmethod
+    def detect(
+        cls,
+        *,
+        proc_root: str | Path = "/proc",
+        cgroup_root: str | Path = "/sys/fs/cgroup",
+    ) -> "ResourceSnapshot":
+        """Detect Linux capacity using procfs and common cgroup v1/v2 files.
+
+        This method performs a one-time read only when explicitly called. It
+        starts with host MemAvailable/CPU count, then applies tighter cgroup
+        memory and CPU quota limits when those files are available. Unsupported
+        hosts or missing MemAvailable data fail closed with RuntimeError.
+        """
+        proc = Path(proc_root)
+        cgroup = Path(cgroup_root)
+        meminfo = _read_meminfo(proc / "meminfo")
+        host_available = meminfo.get("MemAvailable")
+        host_total = meminfo.get("MemTotal")
+        if host_available is None or host_total is None:
+            raise RuntimeError("Linux /proc/meminfo must provide MemAvailable and MemTotal")
+
+        available_memory = host_available * 1024
+        total_memory = host_total * 1024
+        cpu_count = max(1, os.cpu_count() or 1)
+
+        memory_limit = _read_first_int(
+            cgroup / "memory.max",
+            cgroup / "memory" / "memory.limit_in_bytes",
+        )
+        memory_current = _read_first_int(
+            cgroup / "memory.current",
+            cgroup / "memory" / "memory.usage_in_bytes",
+        )
+        if memory_limit is not None and memory_current is not None:
+            # Some cgroup v1 systems use a very large integer for "unlimited".
+            if memory_limit > 2 * total_memory:
+                memory_limit = None
+            elif memory_limit >= 0:
+                available_memory = min(available_memory, max(0, memory_limit - memory_current))
+
+        cpu_quota = _read_cpu_quota(cgroup)
+        if cpu_quota is not None:
+            quota, period = cpu_quota
+            cpu_count = min(cpu_count, max(1, quota // period))
+
+        return cls(cpu_count=cpu_count, available_memory_bytes=available_memory)
+
+
+def _read_meminfo(path: Path) -> dict[str, int]:
+    values: dict[str, int] = {}
+    try:
+        lines = path.read_text(encoding="ascii").splitlines()
+    except OSError as exc:
+        raise RuntimeError("Linux /proc/meminfo is unavailable") from exc
+    for line in lines:
+        key, separator, remainder = line.partition(":")
+        if not separator:
+            continue
+        fields = remainder.split()
+        if fields and fields[0].isdigit():
+            values[key] = int(fields[0])
+    return values
+
+
+def _read_first_int(*paths: Path) -> int | None:
+    for path in paths:
+        try:
+            value = path.read_text(encoding="ascii").strip()
+        except OSError:
+            continue
+        if value == "max":
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            continue
+        if parsed >= 0:
+            return parsed
+    return None
+
+
+def _read_cpu_quota(cgroup_root: Path) -> tuple[int, int] | None:
+    try:
+        fields = (cgroup_root / "cpu.max").read_text(encoding="ascii").split()
+        if len(fields) == 2 and fields[0] != "max":
+            quota, period = int(fields[0]), int(fields[1])
+            if quota > 0 and period > 0:
+                return quota, period
+    except (OSError, ValueError):
+        pass
+
+    quota = _read_first_int(cgroup_root / "cpu" / "cpu.cfs_quota_us")
+    period = _read_first_int(cgroup_root / "cpu" / "cpu.cfs_period_us")
+    if quota is not None and period is not None and quota > 0 and period > 0:
+        return quota, period
+    return None
 
 
 @dataclass(frozen=True, slots=True)
