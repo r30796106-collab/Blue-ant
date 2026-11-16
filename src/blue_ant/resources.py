@@ -144,7 +144,10 @@ def _read_meminfo(path: Path) -> dict[str, int]:
             continue
         fields = remainder.split()
         if fields and fields[0].isdigit():
-            values[key] = int(fields[0])
+            try:
+                values[key] = int(fields[0])
+            except ValueError:
+                continue
     return values
 
 
