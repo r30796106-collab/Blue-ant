@@ -214,12 +214,12 @@ def test_detect_decodes_escaped_cgroup2_mountpoint(tmp_path, monkeypatch) -> Non
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
-    escaped_mountpoint = str(cgroup).replace(" ", r"\\040")
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\n", encoding="ascii")
+    escaped_mountpoint = str(cgroup).replace(" ", r"\040")
     (proc / "self" / "mountinfo").write_text(
-        f"29 23 0:26 /tenant {escaped_mountpoint} rw - cgroup2 cgroup rw\\n",
+        f"29 23 0:26 /tenant {escaped_mountpoint} rw - cgroup2 cgroup rw\n",
         encoding="ascii",
     )
     (cgroup / "memory.max").write_text(str(4 * 1024**3), encoding="ascii")
@@ -240,11 +240,11 @@ def test_detect_ignores_membership_outside_cgroup2_mount_root(tmp_path, monkeypa
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\n", encoding="ascii")
     (proc / "self" / "mountinfo").write_text(
-        f"29 23 0:26 /other {cgroup} rw - cgroup2 cgroup rw\\n",
+        f"29 23 0:26 /other {cgroup} rw - cgroup2 cgroup rw\n",
         encoding="ascii",
     )
     # A mismatched mount root must not cause the membership path to be joined
