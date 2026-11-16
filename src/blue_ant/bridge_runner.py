@@ -36,16 +36,31 @@ def _write_artifact(path: Path, content: bytes) -> None:
 
 
 def _prepare_output_directory(path: Path) -> None:
-    """Create output directory and reject symlinked path components."""
-    path.mkdir(parents=True, exist_ok=True)
+    """Create output directories component-by-component without following symlinks."""
     absolute = Path(os.path.abspath(path))
-    current = Path(absolute.anchor)
-    for component in absolute.parts[1:]:
-        current = current / component
-        if current.is_symlink():
-            raise ValueError("output_dir and its parent directories must not be symlinks")
-    if not stat.S_ISDIR(os.stat(absolute, follow_symlinks=False).st_mode):
-        raise ValueError("output_dir must be a regular directory")
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(absolute.anchor, os.O_RDONLY | directory_flag | nofollow)
+    try:
+        for component in absolute.parts[1:]:
+            try:
+                os.mkdir(component, mode=0o777, dir_fd=descriptor)
+            except FileExistsError:
+                pass
+            try:
+                next_descriptor = os.open(
+                    component,
+                    os.O_RDONLY | directory_flag | nofollow,
+                    dir_fd=descriptor,
+                )
+            except OSError as exc:
+                raise ValueError(
+                    "output_dir and its parent directories must be real, non-symlink directories"
+                ) from exc
+            os.close(descriptor)
+            descriptor = next_descriptor
+    finally:
+        os.close(descriptor)
 
 
 def run_bridge_command(
