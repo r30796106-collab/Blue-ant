@@ -275,3 +275,48 @@ def test_task_spec_rejects_invalid_inputs(kwargs, message):
     values.update(kwargs)
     with pytest.raises(ValueError, match=message):
         TaskSpec(**values)
+
+
+def test_scheduler_reports_exhausted_retry_attempts_and_blocks_dependents() -> None:
+    attempts = 0
+    child_calls: list[str] = []
+
+    def always_fails() -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("still unavailable")
+
+    results = Scheduler().run(
+        [
+            TaskSpec("unstable", always_fails, max_attempts=3, retry_safe=True),
+            TaskSpec(
+                "dependent",
+                lambda: child_calls.append("ran"),
+                depends_on=("unstable",),
+            ),
+        ]
+    )
+
+    assert attempts == 3
+    assert results["unstable"].status == TaskStatus.FAILED
+    assert results["unstable"].attempts == 3
+    assert "RuntimeError: still unavailable" == results["unstable"].error
+    assert results["dependent"].status == TaskStatus.BLOCKED
+    assert results["dependent"].attempts == 0
+    assert child_calls == []
+
+
+def test_scheduler_blocks_transitive_dependents_after_upstream_failure() -> None:
+    calls: list[str] = []
+    results = Scheduler().run(
+        [
+            TaskSpec("root", lambda: (_ for _ in ()).throw(RuntimeError("root failed"))),
+            TaskSpec("middle", lambda: calls.append("middle"), depends_on=("root",)),
+            TaskSpec("leaf", lambda: calls.append("leaf"), depends_on=("middle",)),
+        ]
+    )
+
+    assert results["root"].status == TaskStatus.FAILED
+    assert results["middle"].status == TaskStatus.BLOCKED
+    assert results["leaf"].status == TaskStatus.BLOCKED
+    assert calls == []
