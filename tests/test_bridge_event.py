@@ -184,3 +184,58 @@ def test_failed_event_is_receipted_and_not_replayed(tmp_path, monkeypatch):
 
     replay = run_bridge_event(event, command, target, tmp_path / "out", state)
     assert replay == {"event_id": "event-001", "status": "failed", "duplicate": True}
+
+
+def test_existing_receipt_must_match_event_identity_and_schema(tmp_path):
+    import hashlib
+
+    event, command, target, state = write_inputs(tmp_path)
+    raw = event.read_bytes()
+    receipt = {
+        "schema_version": 1,
+        "event_id": "another-event",
+        "event_sha256": hashlib.sha256(raw).hexdigest(),
+        "command_id": "event-test",
+        "status": "completed",
+        "result": {"action": "stop"},
+    }
+    (state / "event-001.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+@pytest.mark.parametrize("receipt_text", [
+    "[]",
+    '{"schema_version":1,"event_id":"event-001","event_sha256":"hash",'
+    '"command_id":"event-test","status":"unknown"}',
+    '{"schema_version":true,"event_id":"event-001","event_sha256":"hash",'
+    '"command_id":"event-test","status":"processing"}',
+    '{"schema_version":1,"event_id":"event-001","event_sha256":"hash",'
+    '"command_id":"event-test","status":"processing","unexpected":true}',
+])
+def test_existing_receipt_rejects_invalid_schema(tmp_path, receipt_text):
+    event, command, target, state = write_inputs(tmp_path)
+    (state / "event-001.json").write_text(receipt_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="receipt"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+def test_existing_receipt_rejects_oversized_content(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    (state / "event-001.json").write_text(" " * (16 * 1024 + 1), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="16 KiB"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+def test_existing_receipt_rejects_symlink(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    outside = tmp_path / "receipt.json"
+    outside.write_text('{"status":"completed"}', encoding="utf-8")
+    (state / "event-001.json").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="receipt"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+    assert outside.read_text(encoding="utf-8") == '{"status":"completed"}'
