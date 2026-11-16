@@ -115,7 +115,7 @@ def test_rejects_duplicate_json_keys(tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="duplicate key"):
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
         run_bridge_event(event, command, target, tmp_path / "out", state)
 
 
