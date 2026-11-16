@@ -54,7 +54,9 @@ def build_patch_proposal(
     changes: list[dict[str, Any]],
 ) -> PatchProposal:
     """Package a task's exact existing file allowlist into a hash-checked proposal."""
-    if not isinstance(development_plan, dict) or development_plan.get("schema_version") != 1:
+    if (not isinstance(development_plan, dict)
+        or isinstance(development_plan.get("schema_version"), bool)
+        or development_plan.get("schema_version") != 1):
         raise ValueError("development plan must use schema_version 1")
     project_id = development_plan.get("project_id")
     plan_id = development_plan.get("plan_id")
