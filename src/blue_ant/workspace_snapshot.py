@@ -36,10 +36,10 @@ class SnapshotResult:
     skipped_sensitive_files: tuple[str, ...]
 
 
-def _reject_symlink_components(path: Path) -> None:
+def _reject_symlink_components(path: Path, *, label: str = "workspace path") -> None:
     for component in (path, *path.parents):
         if component.is_symlink():
-            raise ValueError(f"workspace path must not contain symlinks: {component}")
+            raise ValueError(f"{label} must not contain symlinks: {component}")
 
 
 def _raise_walk_error(error: OSError) -> None:
@@ -143,8 +143,7 @@ def create_workspace_snapshot(
         raise ValueError(f"max_total_bytes must be between 1 and {_MAX_TOTAL_BYTES}")
 
     supplied_source = Path(source_root).expanduser()
-    if supplied_source.is_symlink():
-        raise ValueError("source_root must not be a symlink")
+    _reject_symlink_components(supplied_source, label="source_root")
     source = supplied_source.resolve(strict=True)
     if not source.is_dir():
         raise NotADirectoryError(str(source))
