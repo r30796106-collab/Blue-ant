@@ -239,3 +239,15 @@ def test_existing_receipt_rejects_symlink(tmp_path):
     with pytest.raises(ValueError, match="receipt"):
         run_bridge_event(event, command, target, tmp_path / "out", state)
     assert outside.read_text(encoding="utf-8") == '{"status":"completed"}'
+
+
+def test_rejects_symlinked_parent_of_state_directory(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    alias_parent = tmp_path / "state-parent-alias"
+    alias_parent.symlink_to(tmp_path, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="parent directories"):
+        run_bridge_event(
+            event, command, target, tmp_path / "out", alias_parent / "state"
+        )
+    assert not (state / "event-001.json").exists()
