@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 from pathlib import Path
 import threading
 
@@ -208,3 +209,48 @@ def test_audit_verification_rejects_non_object_json_record(tmp_path: Path):
     assert verification.valid is False
     assert verification.records == 1
     assert "line 2 is not a JSON object" == verification.error
+
+
+
+def _append_audit_events(path: str, worker_id: int, event_count: int) -> None:
+    audit = AuditLog(path)
+    for index in range(event_count):
+        audit.record("process_event", worker_id=worker_id, index=index)
+
+
+def test_audit_log_serializes_cross_process_appends(tmp_path: Path):
+    path = tmp_path / "events.jsonl"
+    process_count = 4
+    events_per_process = 8
+    context = multiprocessing.get_context("spawn")
+    processes = [
+        context.Process(
+            target=_append_audit_events,
+            args=(str(path), worker_id, events_per_process),
+        )
+        for worker_id in range(process_count)
+    ]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=15)
+        if process.is_alive():
+            process.terminate()
+            process.join()
+            pytest.fail("audit writer process did not finish within 15 seconds")
+
+    assert [process.exitcode for process in processes] == [0] * process_count
+    verification = AuditLog(path).verify()
+    assert verification.valid is True
+    assert verification.records == process_count * events_per_process
+
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert {
+        (record["worker_id"], record["index"])
+        for record in records
+    } == {
+        (worker_id, index)
+        for worker_id in range(process_count)
+        for index in range(events_per_process)
+    }
