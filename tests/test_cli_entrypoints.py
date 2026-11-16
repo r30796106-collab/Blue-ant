@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
+import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -40,3 +43,18 @@ def test_cli_module_help_exits_successfully(module: str) -> None:
         f"{result.stderr[-2000:]}"
     )
     assert "usage:" in result.stdout.lower()
+
+
+def test_project_scripts_resolve_to_all_smoke_tested_cli_modules() -> None:
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    scripts = project["project"]["scripts"]
+
+    targets = {}
+    for script_name, target in scripts.items():
+        module_name, separator, attribute = target.partition(":")
+        assert separator and module_name and attribute, script_name
+        targets[script_name] = (module_name, attribute)
+        resolved = getattr(importlib.import_module(module_name), attribute)
+        assert callable(resolved), script_name
+
+    assert {module for module, _ in targets.values()} == set(CLI_MODULES)
