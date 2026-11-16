@@ -204,3 +204,57 @@ def test_detect_maps_membership_relative_to_non_root_cgroup2_mount(tmp_path, mon
 
     assert snapshot.cpu_count == 1
     assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+
+def test_detect_decodes_escaped_cgroup2_mountpoint(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup mount"
+    service = cgroup / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    escaped_mountpoint = str(cgroup).replace(" ", r"\\040")
+    (proc / "self" / "mountinfo").write_text(
+        f"29 23 0:26 /tenant {escaped_mountpoint} rw - cgroup2 cgroup rw\\n",
+        encoding="ascii",
+    )
+    (cgroup / "memory.max").write_text(str(4 * 1024**3), encoding="ascii")
+    (cgroup / "memory.current").write_text(str(1024**3), encoding="ascii")
+    (service / "memory.max").write_text(str(2 * 1024**3), encoding="ascii")
+    (service / "memory.current").write_text(str(1536 * 1024**2), encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+def test_detect_ignores_membership_outside_cgroup2_mount_root(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup-mount"
+    service = cgroup / "tenant" / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "mountinfo").write_text(
+        f"29 23 0:26 /other {cgroup} rw - cgroup2 cgroup rw\\n",
+        encoding="ascii",
+    )
+    # A mismatched mount root must not cause the membership path to be joined
+    # beneath cgroup_root; only the supplied mount root is considered.
+    (cgroup / "memory.max").write_text(str(4 * 1024**3), encoding="ascii")
+    (cgroup / "memory.current").write_text(str(1024**3), encoding="ascii")
+    (service / "memory.max").write_text(str(1 * 1024**3), encoding="ascii")
+    (service / "memory.current").write_text(str(0), encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == 3 * 1024**3
