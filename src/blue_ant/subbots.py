@@ -121,6 +121,8 @@ def _read_index_file(path: Path, *, max_remaining_bytes: int) -> tuple[str, int]
     path_info = path.lstat()
     if not stat.S_ISREG(path_info.st_mode):
         raise ValueError("index source is not a regular file")
+    if path_info.st_nlink > 1:
+        raise ValueError("index source is hard-linked")
     if path_info.st_size > _MAX_INDEX_FILE_BYTES or path_info.st_size > max_remaining_bytes:
         raise ValueError("index source exceeds configured limits")
 
@@ -129,6 +131,8 @@ def _read_index_file(path: Path, *, max_remaining_bytes: int) -> tuple[str, int]
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
             raise ValueError("opened index source is not a regular file")
+        if before.st_nlink > 1:
+            raise ValueError("opened index source is hard-linked")
         if (before.st_dev, before.st_ino) != (path_info.st_dev, path_info.st_ino):
             raise ValueError("index source changed while opening")
         if before.st_size > _MAX_INDEX_FILE_BYTES or before.st_size > max_remaining_bytes:
