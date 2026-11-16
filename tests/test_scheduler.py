@@ -65,7 +65,7 @@ def test_retry_is_bounded() -> None:
             raise RuntimeError("temporary")
         return "recovered"
 
-    result = Scheduler().run([TaskSpec("flaky", flaky, max_attempts=3)])["flaky"]
+    result = Scheduler().run([TaskSpec("flaky", flaky, max_attempts=3, retry_safe=True)])["flaky"]
 
     assert attempts == 3
     assert result.status == TaskStatus.SUCCEEDED
@@ -151,3 +151,37 @@ def test_scheduler_audit_redacts_task_exception_message(tmp_path) -> None:
     audit_text = audit_path.read_text(encoding="utf-8")
     assert secret not in audit_text
     assert '"error_type": "RuntimeError"' in audit_text
+
+
+def test_scheduler_does_not_retry_unmarked_task_even_with_multiple_attempts() -> None:
+    attempts = 0
+
+    def flaky() -> str:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("transient")
+
+    result = Scheduler().run([TaskSpec("not-retry-safe", flaky, max_attempts=3)])["not-retry-safe"]
+
+    assert attempts == 1
+    assert result.status == TaskStatus.FAILED
+    assert result.attempts == 1
+
+
+def test_scheduler_retries_only_when_explicitly_marked_safe() -> None:
+    attempts = 0
+
+    def flaky() -> str:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("transient")
+        return "ok"
+
+    result = Scheduler().run(
+        [TaskSpec("retry-safe", flaky, max_attempts=2, retry_safe=True)]
+    )["retry-safe"]
+
+    assert attempts == 2
+    assert result.status == TaskStatus.SUCCEEDED
+    assert result.attempts == 2
