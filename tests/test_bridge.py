@@ -82,3 +82,27 @@ def test_rejects_non_boolean_snapshot_sources(value):
     command["snapshot_sources"] = value
     with pytest.raises(ValueError, match="snapshot_sources"):
         validate_bridge_command(command)
+
+
+def test_load_rejects_duplicate_top_level_json_keys(tmp_path):
+    source = tmp_path / "command.json"
+    source.write_text(
+        '{"schema_version": 1, "schema_version": 1}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        load_bridge_command(source)
+
+
+def test_load_rejects_duplicate_nested_json_keys(tmp_path):
+    command = valid_command()
+    command_text = json.dumps(command)
+    command_text = command_text.replace(
+        '"roles": [', '"roles": ["repo_analyst"], "roles": ['
+    )
+    source = tmp_path / "command.json"
+    source.write_text(command_text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        load_bridge_command(source)
