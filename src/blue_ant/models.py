@@ -30,6 +30,7 @@ class TaskSpec:
     run: TaskCallable
     depends_on: tuple[str, ...] = ()
     max_attempts: int = 1
+    retry_safe: bool = False
     action: str = "local_task"
     project: str = "default"
     metadata: dict[str, Any] = field(default_factory=dict)
