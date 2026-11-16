@@ -658,3 +658,13 @@ def test_cgroup_metadata_falls_back_for_oversized_membership(tmp_path, monkeypat
     (self_dir / "cgroup").write_text("0::/tenant/service", encoding="ascii")
 
     assert resources._cgroup_v2_dirs(proc, cgroup) == (cgroup,)
+
+
+
+def test_meminfo_ignores_numeric_tokens_beyond_python_integer_limit(tmp_path):
+    from blue_ant.resources import _read_meminfo
+
+    path = tmp_path / "meminfo"
+    path.write_text("MemTotal: " + "9" * 5000 + " kB\n", encoding="ascii")
+
+    assert _read_meminfo(path) == {}
