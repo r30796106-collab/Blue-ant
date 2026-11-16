@@ -210,3 +210,20 @@ def test_index_rejects_symlink_swapped_in_before_open(tmp_path: Path, monkeypatc
     assert swapped
     assert held.read_text(encoding="utf-8") == "ordinary"
     assert outside.read_text(encoding="utf-8") == "sensitive"
+
+
+
+def test_index_skips_hardlinked_files_to_avoid_external_content(tmp_path: Path):
+    import os
+
+    outside = tmp_path.parent / "blue-ant-index-hardlink-secret.txt"
+    outside.write_text("credential=must-not-be-indexed", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    try:
+        os.link(outside, repo / "linked.txt")
+    except OSError:
+        pytest.skip("hard links are unavailable on this filesystem")
+
+    assert SubBot.index_files(repo) == ()
+    assert outside.read_text(encoding="utf-8") == "credential=must-not-be-indexed"
