@@ -164,11 +164,8 @@ def test_persistent_registry_rejects_symlink_parent_and_rolls_back_registration(
     linked_parent.symlink_to(real_parent, target_is_directory=True)
     source = tmp_path / "source"
     source.mkdir()
-    registry = ProjectRegistry(tmp_path / "workspaces", registry_path=linked_parent / "projects.json")
-
     with pytest.raises(ValueError, match="parent directories"):
-        registry.register("project", source)
-    assert registry.list_projects() == ()
+        ProjectRegistry(tmp_path / "workspaces", registry_path=linked_parent / "projects.json")
     assert list(real_parent.iterdir()) == []
 
 
