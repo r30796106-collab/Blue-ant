@@ -44,6 +44,13 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
           repository = os.environ["TARGET_REPOSITORY"]
           ref = os.environ["TARGET_REF"]
           project_id = os.environ["PROJECT_ID"]
@@ -53,7 +60,7 @@ jobs:
               raise SystemExit("Invalid target ref")
           if not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", project_id):
               raise SystemExit("Invalid project_id")
-          proposal = json.loads(os.environ["PROPOSAL_JSON"])
+          proposal = json.loads(os.environ["PROPOSAL_JSON"], object_pairs_hook=unique_object)
           if not isinstance(proposal, dict) or set(proposal) != {"proposal_id", "project_id", "task_id", "changes"}:
               raise SystemExit("Proposal must contain exactly proposal_id, project_id, task_id, changes")
           for field in ("proposal_id", "project_id", "task_id"):
