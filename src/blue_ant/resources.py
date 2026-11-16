@@ -274,11 +274,19 @@ def _read_cpu_set_count(path: Path) -> int | None:
             parts = item.split("-")
             if len(parts) != 2 or not all(part.isdigit() for part in parts):
                 return None
-            start, end = map(int, parts)
+            try:
+                start, end = map(int, parts)
+            except ValueError:
+                # Extremely long digit strings can exceed Python's safe
+                # integer-conversion limit; malformed host data is ignored.
+                return None
             if end < start:
                 return None
         elif item.isdigit():
-            start = end = int(item)
+            try:
+                start = end = int(item)
+            except ValueError:
+                return None
         else:
             return None
         ranges.append((start, end))
