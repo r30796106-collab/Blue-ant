@@ -219,3 +219,34 @@ def test_persistent_registry_rejects_nested_duplicate_json_keys(tmp_path: Path):
 
     with pytest.raises(ValueError, match="duplicate JSON object key"):
         ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_oversized_file(tmp_path: Path):
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(" " * (1024 * 1024 + 1), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="1 MiB"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_symlinked_parent_on_load(tmp_path: Path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    (real_parent / "projects.json").write_text(
+        json.dumps({"schema_version": 1, "projects": []}), encoding="utf-8"
+    )
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="parent directories"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=linked_parent / "projects.json")
+
+
+def test_persistent_registry_rejects_symlinked_registry_file(tmp_path: Path):
+    outside = tmp_path / "outside.json"
+    outside.write_text(json.dumps({"schema_version": 1, "projects": []}), encoding="utf-8")
+    linked = tmp_path / "projects.json"
+    linked.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=linked)
