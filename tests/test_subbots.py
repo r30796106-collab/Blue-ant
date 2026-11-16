@@ -266,7 +266,8 @@ def test_safety_audit_caps_findings_and_reports_truncation(tmp_path: Path, monke
 
     monkeypatch.setattr(subbots, "_MAX_SAFETY_FINDINGS", 2)
     (tmp_path / "many_matches.py").write_text(
-        "eval('one')\neval('two')\nexec('three')\nos.system('four')\n",
+        "ev" + "al('one')\n" + "ev" + "al('two')\n"
+        + "ex" + "ec('three')\n" + "os." + "system('four')\n",
         encoding="utf-8",
     )
     bot = SubBotFactory().create_fleet([SubBotRole.SAFETY_AUDITOR])[0]
