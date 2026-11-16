@@ -133,3 +133,21 @@ def test_scheduler_rejects_task_batch_above_configured_limit() -> None:
 def test_task_retry_count_has_hard_upper_bound() -> None:
     with pytest.raises(ValueError, match="between 1 and 10"):
         TaskSpec("too-many-retries", lambda: None, max_attempts=11)
+
+
+def test_scheduler_audit_redacts_task_exception_message(tmp_path) -> None:
+    audit_path = tmp_path / "scheduler-audit.jsonl"
+    secret = "credential=do-not-persist-this"
+
+    def fail_with_sensitive_message() -> None:
+        raise RuntimeError(secret)
+
+    result = Scheduler(audit_path=audit_path).run(
+        [TaskSpec("sensitive-failure", fail_with_sensitive_message)]
+    )["sensitive-failure"]
+
+    assert result.status == TaskStatus.FAILED
+    assert result.error == f"RuntimeError: {secret}"
+    audit_text = audit_path.read_text(encoding="utf-8")
+    assert secret not in audit_text
+    assert '"error_type": "RuntimeError"' in audit_text
