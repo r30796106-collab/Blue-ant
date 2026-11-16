@@ -164,3 +164,10 @@ def test_refuses_to_overwrite_existing_proposal(tmp_path):
         stage_bundle(make_bundle(), root)
     assert proposal_path.read_text(encoding="utf-8") == "preserve"
     assert not (root / "worker_two").exists()
+
+
+def test_rejects_boolean_schema_version():
+    bundle = make_bundle()
+    bundle["schema_version"] = True
+    with pytest.raises(ValueError, match="schema_version"):
+        validate_bundle(bundle)
