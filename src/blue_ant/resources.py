@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +106,7 @@ def _read_meminfo(path: Path) -> dict[str, int]:
 
 
 def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
-    """Return the mounted cgroup root and the process's nested v2 ancestors."""
+    """Return the visible cgroup v2 mount root and this process's ancestors."""
     try:
         lines = (proc_root / "self" / "cgroup").read_text(encoding="ascii").splitlines()
     except OSError:
@@ -119,8 +119,38 @@ def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
     if membership is None:
         return (cgroup_root,)
 
-    relative = Path(membership.lstrip("/"))
-    if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+    process_path = PurePosixPath(membership)
+    if not process_path.is_absolute() or ".." in process_path.parts:
+        return (cgroup_root,)
+
+    mount_root = PurePosixPath("/")
+    mountinfo = proc_root / "self" / "mountinfo"
+    try:
+        mount_lines = mountinfo.read_text(encoding="ascii").splitlines()
+    except OSError:
+        mount_lines = []
+
+    for line in mount_lines:
+        before, separator, after = line.partition(" - ")
+        if not separator:
+            continue
+        left = before.split()
+        right = after.split()
+        if len(left) < 5 or not right or right[0] != "cgroup2":
+            continue
+        mountpoint = Path(_unescape_mountinfo(left[4]))
+        if mountpoint == cgroup_root:
+            candidate_root = PurePosixPath(_unescape_mountinfo(left[3]))
+            if candidate_root.is_absolute() and ".." not in candidate_root.parts:
+                mount_root = candidate_root
+            break
+
+    try:
+        relative = process_path.relative_to(mount_root)
+    except ValueError:
+        return (cgroup_root,)
+
+    if any(part in {"", ".", ".."} for part in relative.parts):
         return (cgroup_root,)
 
     directories = [cgroup_root]
@@ -129,6 +159,16 @@ def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
         current = current / part
         directories.append(current)
     return tuple(directories)
+
+
+def _unescape_mountinfo(value: str) -> str:
+    """Decode the octal path escapes used by procfs mountinfo."""
+    return (
+        value.replace("\\134", "\\\\")
+        .replace("\\040", " ")
+        .replace("\\011", "\t")
+        .replace("\\012", "\n")
+    )
 
 
 def _read_v2_cpu_quota(directory: Path) -> tuple[int, int] | None:
