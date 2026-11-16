@@ -269,3 +269,20 @@ def test_patch_rejects_symlinked_parent_directory(tmp_path: Path):
         )
 
     assert protected.read_text(encoding="utf-8") == "preserve"
+
+
+def test_patch_rejects_symlinked_ancestor_of_workspace_root(tmp_path: Path):
+    real_parent = tmp_path / "real-parent"
+    workspace = real_parent / "workspace"
+    workspace.mkdir(parents=True)
+    alias_parent = tmp_path / "alias-parent"
+    alias_parent.symlink_to(real_parent, target_is_directory=True)
+    aliased_workspace = alias_parent / "workspace"
+
+    with pytest.raises(ValueError, match="symlink component"):
+        apply_patch_proposal(
+            aliased_workspace,
+            proposal(FileChange("new.txt", "content", None)),
+            approved=True,
+        )
+    assert not (workspace / "new.txt").exists()
