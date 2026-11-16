@@ -37,7 +37,7 @@ def test_detect_reads_host_capacity_and_tighter_cgroup_v2_limits(tmp_path, monke
     proc.mkdir()
     cgroup.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 2097152 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
     )
     (cgroup / "memory.max").write_text(str(1024 * 1024 * 1024), encoding="ascii")
     (cgroup / "memory.current").write_text(str(256 * 1024 * 1024), encoding="ascii")
@@ -56,7 +56,7 @@ def test_detect_uses_host_capacity_when_cgroup_limits_are_unavailable(tmp_path, 
     proc.mkdir()
     cgroup.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 4096000 kB\\nMemAvailable: 1024000 kB\\n", encoding="ascii"
+        "MemTotal: 4096000 kB\nMemAvailable: 1024000 kB\n", encoding="ascii"
     )
     monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
 
@@ -75,7 +75,7 @@ def test_detect_supports_common_cgroup_v1_limits(tmp_path, monkeypatch) -> None:
     memory.mkdir(parents=True)
     cpu.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 2097152 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
     )
     (memory / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
     (memory / "memory.usage_in_bytes").write_text(str(512 * 1024**2), encoding="ascii")
@@ -92,7 +92,7 @@ def test_detect_supports_common_cgroup_v1_limits(tmp_path, monkeypatch) -> None:
 def test_detect_fails_closed_when_memavailable_is_missing(tmp_path) -> None:
     proc = tmp_path / "proc"
     proc.mkdir()
-    (proc / "meminfo").write_text("MemTotal: 1000 kB\\n", encoding="ascii")
+    (proc / "meminfo").write_text("MemTotal: 1000 kB\n", encoding="ascii")
 
     with pytest.raises(RuntimeError, match="MemAvailable"):
         ResourceSnapshot.detect(proc_root=proc, cgroup_root=tmp_path / "cgroup")
