@@ -127,7 +127,13 @@ def run_bridge_event(
     event, event_hash = _load_event(event_path)
 
     state = Path(state_dir)
-    if state.is_symlink() or not state.is_dir():
+    absolute_state = Path(os.path.abspath(state))
+    current = Path(absolute_state.anchor)
+    for component in absolute_state.parts[1:]:
+        current = current / component
+        if current.is_symlink():
+            raise ValueError("state_dir and its parent directories must not be symlinks")
+    if not absolute_state.is_dir():
         raise ValueError("state_dir must be an existing, non-symlink directory")
     receipt_path = state / f"{event['event_id']}.json"
     initial = {
