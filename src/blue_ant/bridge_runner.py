@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +15,37 @@ from .development_plan import generate_development_plan, plan_to_dict
 from .projects import ProjectRegistry
 from .subbots import SubBotRole
 from .workforce import WorkAssignment, Workforce
+
+
+def _write_artifact(path: Path, content: bytes) -> None:
+    """Atomically replace one artifact without following a final symlink."""
+    fd, temporary = tempfile.mkstemp(prefix=".blue-ant-artifact-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _prepare_output_directory(path: Path) -> None:
+    """Create output directory and reject symlinked path components."""
+    path.mkdir(parents=True, exist_ok=True)
+    absolute = Path(os.path.abspath(path))
+    current = Path(absolute.anchor)
+    for component in absolute.parts[1:]:
+        current = current / component
+        if current.is_symlink():
+            raise ValueError("output_dir and its parent directories must not be symlinks")
+    if not stat.S_ISDIR(os.stat(absolute, follow_symlinks=False).st_mode):
+        raise ValueError("output_dir must be a regular directory")
 
 
 def run_bridge_command(
@@ -28,7 +62,7 @@ def run_bridge_command(
     """
     command = load_bridge_command(command_path)
     output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
+    _prepare_output_directory(output)
 
     # Keep private source snapshots outside the artifact directory so the
     # GitHub workflow uploads reports, not copied project source trees.
@@ -122,14 +156,13 @@ def run_bridge_command(
     event_log_name = f"{command_id}-events.jsonl"
     event_log_source = Path(workforce.audit.path)
     event_log_target = output / event_log_name
-    event_log_target.write_bytes(event_log_source.read_bytes())
-    event_log_target.chmod(0o600)
+    _write_artifact(event_log_target, event_log_source.read_bytes())
     artifact_paths = {key: f"{command_id}-{key}.json" for key in artifacts}
     artifact_paths["event_log"] = event_log_name
     for suffix, payload in artifacts.items():
-        (output / f"{command_id}-{suffix}.json").write_text(
-            json.dumps(payload, indent=2) + "\n",
-            encoding="utf-8",
+        _write_artifact(
+            output / f"{command_id}-{suffix}.json",
+            (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
         )
     return {
         "command_id": command_id,
