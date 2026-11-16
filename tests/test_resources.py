@@ -153,9 +153,9 @@ def test_detect_applies_parent_limits_for_nested_cgroup_v2(tmp_path, monkeypatch
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\n", encoding="ascii")
 
     # The intermediate parent is more restrictive than both the root and leaf.
     (cgroup / "memory.max").write_text(str(5 * 1024**3), encoding="ascii")
