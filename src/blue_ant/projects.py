@@ -11,12 +11,14 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import stat
 
 from .json_utils import strict_json_loads
 
 
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
 _REGISTRY_SCHEMA_VERSION = 1
+_MAX_REGISTRY_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,14 +56,32 @@ class ProjectRegistry:
         path = self.registry_path
         assert path is not None
         if path.is_symlink():
-            raise ValueError("registry_path must not be a symlink")
-        if not path.exists():
-            return
-        if not path.is_file():
-            raise ValueError("registry_path must be a regular file")
+            raise ValueError("registry_path must be a regular, non-symlink file")
+        for ancestor in (path.parent, *path.parent.parents):
+            if ancestor.is_symlink():
+                raise ValueError("registry_path and its parent directories must not be symlinks")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         try:
-            data = strict_json_loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            fd = os.open(path, flags)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise ValueError("registry_path must be a regular, non-symlink file") from exc
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError("registry_path must be a regular file")
+            if info.st_size > _MAX_REGISTRY_BYTES:
+                raise ValueError("project registry exceeds the 1 MiB limit")
+            with os.fdopen(fd, "rb", closefd=False) as stream:
+                raw = stream.read(_MAX_REGISTRY_BYTES + 1)
+            if len(raw) > _MAX_REGISTRY_BYTES:
+                raise ValueError("project registry exceeds the 1 MiB limit")
+        finally:
+            os.close(fd)
+        try:
+            data = strict_json_loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError("project registry cannot be read as valid UTF-8 JSON") from exc
 
         if not isinstance(data, dict) or set(data) != {"schema_version", "projects"}:
