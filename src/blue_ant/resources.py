@@ -326,13 +326,31 @@ def _unescape_mountinfo(value: str) -> str:
     )
 
 
-def _read_v2_cpu_quota(directory: Path) -> tuple[int, int] | None:
+_MAX_CGROUP_SCALAR_BYTES = 128
+
+
+def _read_bounded_ascii(path: Path) -> str | None:
+    """Read a small cgroup scalar without unbounded allocation or decode errors."""
     try:
-        fields = (directory / "cpu.max").read_text(encoding="ascii").split()
-        if len(fields) != 2 or fields[0] == "max":
+        with path.open("rb") as stream:
+            raw = stream.read(_MAX_CGROUP_SCALAR_BYTES + 1)
+        if len(raw) > _MAX_CGROUP_SCALAR_BYTES:
             return None
+        return raw.decode("ascii").strip()
+    except (OSError, UnicodeError):
+        return None
+
+
+def _read_v2_cpu_quota(directory: Path) -> tuple[int, int] | None:
+    value = _read_bounded_ascii(directory / "cpu.max")
+    if value is None:
+        return None
+    fields = value.split()
+    if len(fields) != 2 or fields[0] == "max":
+        return None
+    try:
         quota, period = int(fields[0]), int(fields[1])
-    except (OSError, ValueError):
+    except ValueError:
         return None
     if quota > 0 and period > 0:
         return quota, period
@@ -341,9 +359,8 @@ def _read_v2_cpu_quota(directory: Path) -> tuple[int, int] | None:
 
 def _read_first_int(*paths: Path) -> int | None:
     for path in paths:
-        try:
-            value = path.read_text(encoding="ascii").strip()
-        except OSError:
+        value = _read_bounded_ascii(path)
+        if value is None:
             continue
         if value == "max":
             return None

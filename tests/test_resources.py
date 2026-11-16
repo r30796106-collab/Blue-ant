@@ -584,3 +584,36 @@ def test_read_cpu_set_count_bounds_input_size(tmp_path, monkeypatch) -> None:
     cpuset.write_text("0," * 5, encoding="ascii")
 
     assert _read_cpu_set_count(cpuset) is None
+
+
+
+def test_read_first_int_bounds_scalar_reads_and_ignores_non_ascii(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+    from blue_ant.resources import _read_first_int
+
+    monkeypatch.setattr(resources, "_MAX_CGROUP_SCALAR_BYTES", 8)
+    scalar = tmp_path / "memory.max"
+    scalar.write_text("123456789", encoding="ascii")
+    assert _read_first_int(scalar) is None
+
+    scalar.write_bytes(b"123\xff")
+    assert _read_first_int(scalar) is None
+
+
+def test_read_v2_cpu_quota_ignores_oversized_and_non_ascii_values(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+    from blue_ant.resources import _read_v2_cpu_quota
+
+    monkeypatch.setattr(resources, "_MAX_CGROUP_SCALAR_BYTES", 8)
+    (tmp_path / "cpu.max").write_text("100000 100000", encoding="ascii")
+    assert _read_v2_cpu_quota(tmp_path) is None
+
+    (tmp_path / "cpu.max").write_bytes(b"100000 \xff")
+    assert _read_v2_cpu_quota(tmp_path) is None
+
+
+def test_read_v2_cpu_quota_accepts_valid_value(tmp_path):
+    from blue_ant.resources import _read_v2_cpu_quota
+
+    (tmp_path / "cpu.max").write_text("150000 100000", encoding="ascii")
+    assert _read_v2_cpu_quota(tmp_path) == (150000, 100000)
