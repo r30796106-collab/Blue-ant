@@ -245,3 +245,16 @@ def test_scheduler_resource_policy_caps_actual_concurrency() -> None:
     assert scheduler.max_workers == 2
     assert all(result.status == TaskStatus.SUCCEEDED for result in results.values())
     assert peak == 2
+
+
+def test_scheduler_rejects_duplicate_task_ids_before_execution() -> None:
+    calls: list[str] = []
+    tasks = [
+        TaskSpec("duplicate", lambda: calls.append("first")),
+        TaskSpec("duplicate", lambda: calls.append("second")),
+    ]
+
+    with pytest.raises(ValueError, match="task_id values must be unique"):
+        Scheduler().run(tasks)
+
+    assert calls == []
