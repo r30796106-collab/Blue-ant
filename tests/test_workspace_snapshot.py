@@ -132,6 +132,21 @@ def test_snapshot_rejects_source_destination_overlap_and_symlink_root(tmp_path: 
         create_workspace_snapshot(alias, tmp_path / "snapshot")
 
 
+def test_snapshot_rejects_symlinked_source_root_ancestor(tmp_path: Path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    source = real_parent / "source"
+    source.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="source_root.*symlinks"):
+        create_workspace_snapshot(linked_parent / "source", tmp_path / "snapshot")
+
+    assert list(source.iterdir()) == []
+    assert not (tmp_path / "snapshot").exists()
+
+
 def test_snapshot_rejects_invalid_limits(tmp_path: Path):
     source = tmp_path / "source"
     source.mkdir()
