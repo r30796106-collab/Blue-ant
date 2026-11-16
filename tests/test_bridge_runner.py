@@ -29,7 +29,7 @@ def make_clean_target(root):
     (root / ".github" / "workflows" / "ci.yml").write_text("run: pytest\n", encoding="utf-8")
 
 
-def test_runner_executes_all_approved_roles_and_completes_clean_review(tmp_path):
+def test_runner_executes_all_roles_and_stops_for_safety_auditor_review(tmp_path):
     target = tmp_path / "target"
     target.mkdir()
     make_clean_target(target)
@@ -38,8 +38,8 @@ def test_runner_executes_all_approved_roles_and_completes_clean_review(tmp_path)
 
     result = run_bridge_command(command, target, tmp_path / "out")
 
-    assert result["status"] == "completed"
-    assert result["action"] == "stop"
+    assert result["status"] == "stopped"
+    assert result["action"] == "human_review"
     assert result["workers_completed"] == 4
     assert result["workers_failed"] == 0
     audit = json.loads((tmp_path / "out" / "bridge-v3-test-audit.json").read_text())
