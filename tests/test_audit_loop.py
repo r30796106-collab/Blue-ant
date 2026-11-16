@@ -95,3 +95,32 @@ def test_executor_result_role_mismatch_stops_loop():
     )
     assert report.stop_reason == "worker_error"
     assert report.cycles[0].error == "ValueError: worker result role does not match requested role"
+
+
+def test_executor_task_id_mismatch_stops_before_next_role():
+    from pathlib import Path
+    from blue_ant.audit_loop import BoundedAuditLoop
+    from blue_ant.subbots import SubBotRole
+    from blue_ant.workforce import WorkResult
+
+    calls = []
+
+    def execute(role, cycle):
+        calls.append(role)
+        return WorkResult(
+            task_id="unexpected-task-id",
+            project_id="demo",
+            role=role.value,
+            source_root=Path("."),
+            workspace=Path("."),
+            findings=(),
+        )
+
+    report = BoundedAuditLoop().run(
+        [SubBotRole.REPO_ANALYST, SubBotRole.DOCS_AUDITOR], execute=execute
+    )
+
+    assert report.stop_reason == "worker_error"
+    assert report.cycles_used == 1
+    assert calls == [SubBotRole.REPO_ANALYST]
+    assert "task_id" in (report.cycles[0].error or "")
