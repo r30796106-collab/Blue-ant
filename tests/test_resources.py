@@ -380,9 +380,13 @@ def test_detect_keeps_cgroup_v1_direct_fallback_without_membership(tmp_path, mon
 def test_detect_maps_cgroup_v1_membership_relative_to_non_root_mount(tmp_path, monkeypatch) -> None:
     proc = tmp_path / "proc"
     cgroup = tmp_path / "cgroup-mount"
-    tenant = cgroup / "service"
+    memory_root = cgroup / "memory"
+    cpu_root = cgroup / "cpu"
+    memory_leaf = memory_root / "service"
+    cpu_leaf = cpu_root / "service"
     (proc / "self").mkdir(parents=True)
-    (tenant / "nested").mkdir(parents=True)
+    memory_leaf.mkdir(parents=True)
+    cpu_leaf.mkdir(parents=True)
     (proc / "meminfo").write_text(
         "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
@@ -391,17 +395,14 @@ def test_detect_maps_cgroup_v1_membership_relative_to_non_root_mount(tmp_path, m
         encoding="ascii",
     )
     (proc / "self" / "mountinfo").write_text(
-        f"30 23 0:27 /tenant {cgroup} rw - cgroup cgroup rw,memory\n"
-        f"31 23 0:28 /tenant {cgroup / 'cpu'} rw - cgroup cgroup rw,cpu,cpuacct\n",
+        f"30 23 0:27 /tenant {memory_root} rw - cgroup cgroup rw,memory\n"
+        f"31 23 0:28 /tenant {cpu_root} rw - cgroup cgroup rw,cpu,cpuacct\n",
         encoding="ascii",
     )
-    (cgroup / "memory.limit_in_bytes").write_text(str(4 * 1024**3), encoding="ascii")
-    (cgroup / "memory.usage_in_bytes").write_text(str(1024**3), encoding="ascii")
-    (tenant / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
-    (tenant / "memory.usage_in_bytes").write_text(str(1536 * 1024**2), encoding="ascii")
-    cpu_root = cgroup / "cpu"
-    cpu_leaf = cpu_root / "service"
-    cpu_leaf.mkdir(parents=True)
+    (memory_root / "memory.limit_in_bytes").write_text(str(4 * 1024**3), encoding="ascii")
+    (memory_root / "memory.usage_in_bytes").write_text(str(1024**3), encoding="ascii")
+    (memory_leaf / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
+    (memory_leaf / "memory.usage_in_bytes").write_text(str(1536 * 1024**2), encoding="ascii")
     (cpu_root / "cpu.cfs_quota_us").write_text("400000", encoding="ascii")
     (cpu_root / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
     (cpu_leaf / "cpu.cfs_quota_us").write_text("150000", encoding="ascii")
