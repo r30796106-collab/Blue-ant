@@ -116,8 +116,39 @@ def run_fleet(
     return sorted(findings, key=lambda item: (item.path, item.bot_id, item.message))
 
 
-def _read_index_file(path: Path, *, max_remaining_bytes: int) -> tuple[str, int]:
-    """Open one index file without following a final-component symlink."""
+def _open_index_file(root_fd: int, relative: Path) -> int:
+    """Open a repository-relative file beneath an anchored root without symlink traversal."""
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    directory_fd = os.dup(root_fd)
+    try:
+        for component in relative.parts[:-1]:
+            next_fd = os.open(
+                component,
+                os.O_RDONLY | directory_flag | nofollow,
+                dir_fd=directory_fd,
+            )
+            os.close(directory_fd)
+            directory_fd = next_fd
+            if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+                raise ValueError("index path component is not a directory")
+        return os.open(
+            relative.parts[-1],
+            os.O_RDONLY | nofollow,
+            dir_fd=directory_fd,
+        )
+    finally:
+        os.close(directory_fd)
+
+
+def _read_index_file(
+    path: Path,
+    *,
+    relative: Path,
+    root_fd: int,
+    max_remaining_bytes: int,
+) -> tuple[str, int]:
+    """Open and read one bounded index file from the anchored repository root."""
     path_info = path.lstat()
     if not stat.S_ISREG(path_info.st_mode):
         raise ValueError("index source is not a regular file")
@@ -126,7 +157,7 @@ def _read_index_file(path: Path, *, max_remaining_bytes: int) -> tuple[str, int]
     if path_info.st_size > _MAX_INDEX_FILE_BYTES or path_info.st_size > max_remaining_bytes:
         raise ValueError("index source exceeds configured limits")
 
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    descriptor = _open_index_file(root_fd, relative)
     try:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode):
@@ -171,31 +202,41 @@ def _iter_text_files(root: Path):
     """Walk only relevant source directories; prune generated trees before descent."""
     ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
     repo = root.resolve()
+    root_fd = os.open(
+        repo, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
     indexed_files = 0
     indexed_bytes = 0
-    for current_text, dir_names, file_names in os.walk(repo, topdown=True, followlinks=False):
-        current = Path(current_text)
-        dir_names[:] = [
-            name for name in sorted(dir_names)
-            if name not in ignored and not (current / name).is_symlink()
-        ]
-        for name in sorted(file_names):
-            if indexed_files >= _MAX_INDEX_FILES or indexed_bytes >= _MAX_INDEX_BYTES:
-                return
-            path = current / name
-            if path.is_symlink() or not path.is_file():
-                continue
-            try:
-                resolved = path.resolve(strict=True)
-                resolved.relative_to(repo)
-                content, actual_size = _read_index_file(
-                    path, max_remaining_bytes=_MAX_INDEX_BYTES - indexed_bytes
-                )
-            except (OSError, UnicodeError, ValueError):
-                continue
-            indexed_files += 1
-            indexed_bytes += actual_size
-            yield path.relative_to(repo).as_posix(), content
+    try:
+        for current_text, dir_names, file_names in os.walk(repo, topdown=True, followlinks=False):
+            current = Path(current_text)
+            dir_names[:] = [
+                name for name in sorted(dir_names)
+                if name not in ignored and not (current / name).is_symlink()
+            ]
+            for name in sorted(file_names):
+                if indexed_files >= _MAX_INDEX_FILES or indexed_bytes >= _MAX_INDEX_BYTES:
+                    return
+                path = current / name
+                if path.is_symlink() or not path.is_file():
+                    continue
+                relative = path.relative_to(repo)
+                try:
+                    resolved = path.resolve(strict=True)
+                    resolved.relative_to(repo)
+                    content, actual_size = _read_index_file(
+                        path,
+                        relative=relative,
+                        root_fd=root_fd,
+                        max_remaining_bytes=_MAX_INDEX_BYTES - indexed_bytes,
+                    )
+                except (OSError, UnicodeError, ValueError):
+                    continue
+                indexed_files += 1
+                indexed_bytes += actual_size
+                yield relative.as_posix(), content
+    finally:
+        os.close(root_fd)
 
 
 def _inventory(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
