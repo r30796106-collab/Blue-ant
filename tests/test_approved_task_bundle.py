@@ -166,9 +166,9 @@ def test_refuses_to_overwrite_existing_proposal(tmp_path):
     assert not (root / "worker_two").exists()
 
 
-def test_rejects_boolean_schema_version():
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])\ndef test_rejects_non_integer_schema_version(schema_version):
     bundle = make_bundle()
-    bundle["schema_version"] = True
+    bundle["schema_version"] = schema_version
     with pytest.raises(ValueError, match="schema_version"):
         validate_bundle(bundle)
 
