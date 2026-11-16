@@ -19,7 +19,14 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re
-          data = json.loads(os.environ.get("ISSUE_BODY") or "")
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          data = json.loads(os.environ.get("ISSUE_BODY") or "", object_pairs_hook=unique_object)
           required = {"target_repository", "target_ref", "project_id", "proposal", "apply_approved"}
           if not isinstance(data, dict) or set(data) != required:
               raise SystemExit("Body must contain exactly: " + ", ".join(sorted(required)))
@@ -72,7 +79,14 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          data = json.load(open("instruction/metadata.json", encoding="utf-8"))
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          data = json.load(open("instruction/metadata.json", encoding="utf-8"), object_pairs_hook=unique_object)
           for key in ("target_repository", "target_ref", "project_id", "apply_approved"):
               print(f"{key}={str(data[key]).lower() if isinstance(data[key], bool) else data[key]}")
           PY
