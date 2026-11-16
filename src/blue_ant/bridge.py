@@ -124,7 +124,7 @@ def write_bridge_command(source: str | Path, destination: str | Path) -> dict[st
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             os.fchmod(stream.fileno(), 0o600)
-            stream.write(json.dumps(command, indent=2) + "\\n")
+            stream.write(json.dumps(command, indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, absolute_parent / output.name)
