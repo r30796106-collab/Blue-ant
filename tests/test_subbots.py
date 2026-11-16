@@ -190,7 +190,7 @@ def test_index_rejects_symlink_swapped_in_before_open(tmp_path: Path, monkeypatc
 
     target = tmp_path / "source.txt"
     held = tmp_path / "source.held"
-    outside = tmp_path / "outside.txt"
+    outside = tmp_path.parent / "blue-ant-index-outside.txt"
     target.write_text("ordinary", encoding="utf-8")
     outside.write_text("sensitive", encoding="utf-8")
     original_open = os.open
