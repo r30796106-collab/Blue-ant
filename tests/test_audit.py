@@ -157,3 +157,15 @@ def test_audit_log_hash_chain_serializes_multiple_instances(tmp_path: Path):
     assert verification.records == 40
     events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert {event["index"] for event in events} == set(range(40))
+
+
+def test_oversized_audit_event_is_rejected_without_partial_record(tmp_path):
+    audit = AuditLog(tmp_path / "oversized.jsonl")
+
+    with pytest.raises(ValueError, match="1 MB limit"):
+        audit.record("oversized", payload="x" * (1_000_001))
+
+    assert audit.path.read_bytes() == b""
+    verification = audit.verify()
+    assert verification.valid is True
+    assert verification.records == 0
