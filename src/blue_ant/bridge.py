@@ -29,7 +29,7 @@ def validate_bridge_command(value: Any) -> dict[str, Any]:
     snapshot_sources = value.get("snapshot_sources", False)
     if not isinstance(snapshot_sources, bool):
         raise ValueError("snapshot_sources must be a boolean")
-    if value["schema_version"] != 1 or isinstance(value["schema_version"], bool):
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
         raise ValueError("schema_version must be integer 1")
     if value["command"] != "audit_plan":
         raise ValueError("only the audit_plan command is enabled in bridge V1")
