@@ -171,3 +171,11 @@ def test_rejects_boolean_audit_report_schema_version():
     report["schema_version"] = True
     with pytest.raises(ValueError, match="schema_version 1"):
         generate_development_plan(report, None, project_id="demo")
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])
+def test_rejects_non_integer_audit_report_schema_version(schema_version):
+    report = audit_report()
+    report["schema_version"] = schema_version
+    with pytest.raises(ValueError, match="schema_version 1"):
+        generate_development_plan(report, None, project_id="demo")
