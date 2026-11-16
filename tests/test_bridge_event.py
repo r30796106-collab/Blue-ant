@@ -75,6 +75,7 @@ def test_rejects_reused_event_id_with_changed_payload(tmp_path):
     {"event_type": "shell.command"},
     {"extra": "not-allowed"},
     {"schema_version": True},
+    {"schema_version": 1.0},
 ])
 def test_rejects_unsupported_or_malformed_event(tmp_path, change):
     event, command, target, state = write_inputs(tmp_path)
