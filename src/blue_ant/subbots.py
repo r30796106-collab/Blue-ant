@@ -15,6 +15,11 @@ import re
 from typing import Iterable
 
 
+_MAX_INDEX_FILES = 5000
+_MAX_INDEX_BYTES = 50 * 1024 * 1024
+_MAX_INDEX_FILE_BYTES = 1_000_000
+
+
 class SubBotRole(StrEnum):
     REPO_ANALYST = "repo_analyst"
     TEST_AUDITOR = "test_auditor"
@@ -114,6 +119,8 @@ def _iter_text_files(root: Path):
     """Walk only relevant source directories; prune generated trees before descent."""
     ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
     repo = root.resolve()
+    indexed_files = 0
+    indexed_bytes = 0
     for current_text, dir_names, file_names in os.walk(repo, topdown=True, followlinks=False):
         current = Path(current_text)
         dir_names[:] = [
@@ -121,17 +128,25 @@ def _iter_text_files(root: Path):
             if name not in ignored and not (current / name).is_symlink()
         ]
         for name in sorted(file_names):
+            if indexed_files >= _MAX_INDEX_FILES or indexed_bytes >= _MAX_INDEX_BYTES:
+                return
             path = current / name
             if path.is_symlink() or not path.is_file():
                 continue
             try:
                 resolved = path.resolve(strict=True)
                 resolved.relative_to(repo)
-                if resolved.stat().st_size > 1_000_000:
+                size = resolved.stat().st_size
+                if size > _MAX_INDEX_FILE_BYTES or indexed_bytes + size > _MAX_INDEX_BYTES:
                     continue
                 content = resolved.read_text(encoding="utf-8")
+                actual_size = len(content.encode("utf-8"))
+                if actual_size > _MAX_INDEX_FILE_BYTES or indexed_bytes + actual_size > _MAX_INDEX_BYTES:
+                    continue
             except (OSError, UnicodeError, ValueError):
                 continue
+            indexed_files += 1
+            indexed_bytes += actual_size
             yield path.relative_to(repo).as_posix(), content
 
 
@@ -141,7 +156,7 @@ def _inventory(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
         suffix = Path(name).suffix.lower() or "[no extension]"
         suffixes[suffix] = suffixes.get(suffix, 0) + 1
     summary = ", ".join(f"{key}: {suffixes[key]}" for key in sorted(suffixes))
-    return [Finding(bot_id, SubBotRole.REPO_ANALYST.value, "info", ".", f"Indexed {len(files)} text files ({summary}).")]
+    return [Finding(bot_id, SubBotRole.REPO_ANALYST.value, "info", ".", f"Indexed {len(files)} text files (bounded scan; {summary}).")]
 
 
 def _test_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
