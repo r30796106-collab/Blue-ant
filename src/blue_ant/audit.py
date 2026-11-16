@@ -182,7 +182,7 @@ class AuditLog:
                     if not raw_line.endswith(b"\n"):
                         return AuditVerification(False, count, previous, f"line {line_number} is not newline-terminated")
                     try:
-                        record = json.loads(raw_line.decode("utf-8"))
+                        record = strict_json_loads(raw_line.decode("utf-8"))
                     except (UnicodeError, json.JSONDecodeError, ValueError):
                         return AuditVerification(False, count, previous, f"line {line_number} is not valid UTF-8 JSON without duplicate keys")
                     if not isinstance(record, dict):
