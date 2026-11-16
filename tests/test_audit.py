@@ -176,7 +176,7 @@ def test_audit_verification_rejects_non_object_json_record(tmp_path: Path):
     audit = AuditLog(path)
     audit.record("valid")
     with path.open("ab") as stream:
-        stream.write(b'[]\\n')
+        stream.write(b'[]\n')
 
     verification = audit.verify()
 
