@@ -65,7 +65,9 @@ def generate_development_plan(
 ) -> DevelopmentPlan:
     """Convert bounded structured observations into non-executable review tasks."""
     project = _text(project_id, "project_id", max_length=48)
-    if not isinstance(audit_report, dict) or audit_report.get("schema_version") != 1:
+    if (not isinstance(audit_report, dict)
+        or isinstance(audit_report.get("schema_version"), bool)
+        or audit_report.get("schema_version") != 1):
         raise ValueError("audit report must be a schema_version 1 object")
     if audit_report.get("mode") not in {"bounded_sequential_read_only_audit_loop", "bounded_parallel_read_only_audit"}:
         raise ValueError("unsupported audit report mode")
