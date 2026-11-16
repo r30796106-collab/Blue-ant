@@ -390,3 +390,19 @@ def test_invalid_assignment_id_does_not_create_project_workspace(tmp_path: Path)
         ])
 
     assert not (workspace_root / "repo").exists()
+
+def test_invalid_later_assignment_has_no_earlier_workspace_or_audit_side_effects(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    workspace_root = tmp_path / "workspaces"
+    registry = ProjectRegistry(workspace_root)
+    registry.register("repo", source)
+    audit_path = tmp_path / "audit.jsonl"
+
+    with pytest.raises(KeyError, match="not registered"):
+        Workforce(registry, audit_path=audit_path).run([
+            WorkAssignment("valid-first", "repo", SubBotRole.DOCS_AUDITOR),
+            WorkAssignment("invalid-second", "missing", SubBotRole.TEST_AUDITOR),
+        ])
+
+    assert not (workspace_root / "repo").exists()
+    assert not audit_path.exists()
