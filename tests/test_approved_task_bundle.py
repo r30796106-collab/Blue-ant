@@ -164,3 +164,15 @@ def test_refuses_to_overwrite_existing_proposal(tmp_path):
         stage_bundle(make_bundle(), root)
     assert proposal_path.read_text(encoding="utf-8") == "preserve"
     assert not (root / "worker_two").exists()
+
+
+def test_rejects_symlinked_parent_of_staging_root(tmp_path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+    output = linked_parent / "staged"
+
+    with pytest.raises(ValueError, match="parent directories"):
+        stage_bundle(make_bundle(), output)
+    assert list(real_parent.iterdir()) == []
