@@ -104,3 +104,72 @@ def test_refuses_symlinked_state_directory(tmp_path):
 
     with pytest.raises(ValueError, match="non-symlink"):
         run_bridge_event(event, command, target, tmp_path / "out", alias)
+
+
+def test_rejects_duplicate_json_keys(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    event.write_text(
+        '{"schema_version":1,"event_id":"event-001","event_type":"bridge.command",'
+        '"command_id":"event-test","command_id":"other"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate key"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+def test_rejects_event_larger_than_limit(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    event.write_text(" " * (16 * 1024 + 1), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="16 KiB"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+
+def test_rejects_symlinked_event_file(tmp_path):
+    event, command, target, state = write_inputs(tmp_path)
+    alias = tmp_path / "event-alias.json"
+    alias.symlink_to(event)
+
+    with pytest.raises(ValueError, match="non-symlink"):
+        run_bridge_event(alias, command, target, tmp_path / "out", state)
+
+
+def test_processing_receipt_blocks_automatic_replay(tmp_path):
+    import hashlib
+
+    event, command, target, state = write_inputs(tmp_path)
+    raw = event.read_bytes()
+    receipt = {
+        "schema_version": 1,
+        "event_id": "event-001",
+        "event_sha256": hashlib.sha256(raw).hexdigest(),
+        "command_id": "event-test",
+        "status": "processing",
+    }
+    (state / "event-001.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+    result = run_bridge_event(event, command, target, tmp_path / "out", state)
+
+    assert result == {"event_id": "event-001", "status": "processing", "duplicate": True}
+    assert not (tmp_path / "out").exists()
+
+
+def test_failed_event_is_receipted_and_not_replayed(tmp_path, monkeypatch):
+    import blue_ant.bridge_event as bridge_event
+
+    event, command, target, state = write_inputs(tmp_path)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("simulated worker failure")
+
+    monkeypatch.setattr(bridge_event, "run_bridge_command", fail)
+    with pytest.raises(RuntimeError, match="simulated worker failure"):
+        run_bridge_event(event, command, target, tmp_path / "out", state)
+
+    receipt = json.loads((state / "event-001.json").read_text(encoding="utf-8"))
+    assert receipt["status"] == "failed"
+    assert receipt["error_type"] == "RuntimeError"
+
+    replay = run_bridge_event(event, command, target, tmp_path / "out", state)
+    assert replay == {"event_id": "event-001", "status": "failed", "duplicate": True}
