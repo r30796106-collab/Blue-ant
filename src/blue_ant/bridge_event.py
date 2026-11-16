@@ -62,12 +62,12 @@ def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
 
 
 def _load_existing_receipt(
-    receipt_path: Path, *, event: dict[str, Any], event_hash: str
+    receipt_name: str, *, state_fd: int, event: dict[str, Any], event_hash: str
 ) -> dict[str, Any]:
     """Read and validate a bounded receipt without following symlinks."""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(receipt_path, flags)
+        fd = os.open(receipt_name, flags, dir_fd=state_fd)
     except OSError as exc:
         raise ValueError("existing event receipt is not a readable regular file") from exc
     try:
@@ -128,84 +128,113 @@ def run_bridge_event(
 
     state = Path(state_dir)
     absolute_state = Path(os.path.abspath(state))
-    current = Path(absolute_state.anchor)
-    for component in absolute_state.parts[1:]:
-        current = current / component
-        if current.is_symlink():
-            raise ValueError("state_dir must be an existing non-symlink directory; parent directories must not be symlinks")
-    if not absolute_state.is_dir():
-        raise ValueError("state_dir must be an existing, non-symlink directory")
-    receipt_path = state / f"{event['event_id']}.json"
-    initial = {
-        "schema_version": 1,
-        "event_id": event["event_id"],
-        "event_sha256": event_hash,
-        "command_id": event["command_id"],
-        "status": "processing",
-    }
-
-    # Check an existing event claim before validating its referenced command.
-    # This makes reuse of an event ID with any changed payload fail explicitly,
-    # even when the altered payload also contains an invalid command reference.
-    if receipt_path.exists() or receipt_path.is_symlink():
-        prior = _load_existing_receipt(
-            receipt_path, event=event, event_hash=event_hash
-        )
-        return {
-            "event_id": event["event_id"],
-            "status": prior["status"],
-            "duplicate": True,
-        }
-
-    command = load_bridge_command(command_path)
-    if event["command_id"] != command["command_id"]:
-        raise ValueError("event command_id does not match the validated bridge command")
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(receipt_path, flags, 0o600)
-    except FileExistsError:
-        prior = _load_existing_receipt(
-            receipt_path, event=event, event_hash=event_hash
+        state_fd = os.open(
+            absolute_state.anchor, os.O_RDONLY | directory_flag | nofollow
         )
-        return {
+    except OSError as exc:
+        raise ValueError("state_dir must be an existing non-symlink directory") from exc
+
+    try:
+        # Anchor every path component with directory descriptors. A prior
+        # is_symlink() walk is vulnerable to an ancestor being swapped after
+        # validation but before the receipt is opened or created.
+        for component in absolute_state.parts[1:]:
+            try:
+                next_fd = os.open(
+                    component,
+                    os.O_RDONLY | directory_flag | nofollow,
+                    dir_fd=state_fd,
+                )
+            except OSError as exc:
+                raise ValueError(
+                    "state_dir must be an existing non-symlink directory; "
+                    "parent directories must not be symlinks"
+                ) from exc
+            os.close(state_fd)
+            state_fd = next_fd
+
+        state_info = os.fstat(state_fd)
+        if not stat.S_ISDIR(state_info.st_mode):
+            raise ValueError("state_dir must be an existing, non-symlink directory")
+
+        receipt_name = f"{event['event_id']}.json"
+        initial = {
+            "schema_version": 1,
             "event_id": event["event_id"],
-            "status": prior["status"],
-            "duplicate": True,
+            "event_sha256": event_hash,
+            "command_id": event["command_id"],
+            "status": "processing",
         }
 
-    with os.fdopen(fd, "w+", encoding="utf-8") as receipt:
-        receipt.write(json.dumps(initial, sort_keys=True) + "\n")
-        receipt.flush()
-        os.fsync(receipt.fileno())
+        # Check an existing event claim before validating its referenced command.
+        # This makes reuse of an event ID with any changed payload fail explicitly,
+        # even when the altered payload also contains an invalid command reference.
         try:
-            result = run_bridge_command(command_path, target_path, output_dir)
-            final = {**initial, "status": "completed", "result": result}
-        except Exception as exc:
-            final = {
-                **initial,
-                "status": "failed",
-                "error_type": type(exc).__name__,
+            os.stat(receipt_name, dir_fd=state_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            prior = _load_existing_receipt(
+                receipt_name, state_fd=state_fd, event=event, event_hash=event_hash
+            )
+            return {
+                "event_id": event["event_id"],
+                "status": prior["status"],
+                "duplicate": True,
             }
+
+        command = load_bridge_command(command_path)
+        if event["command_id"] != command["command_id"]:
+            raise ValueError("event command_id does not match the validated bridge command")
+
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow
+        try:
+            fd = os.open(receipt_name, flags, 0o600, dir_fd=state_fd)
+        except FileExistsError:
+            prior = _load_existing_receipt(
+                receipt_name, state_fd=state_fd, event=event, event_hash=event_hash
+            )
+            return {
+                "event_id": event["event_id"],
+                "status": prior["status"],
+                "duplicate": True,
+            }
+
+        with os.fdopen(fd, "w+", encoding="utf-8") as receipt:
+            receipt.write(json.dumps(initial, sort_keys=True) + "\n")
+            receipt.flush()
+            os.fsync(receipt.fileno())
+            try:
+                result = run_bridge_command(command_path, target_path, output_dir)
+                final = {**initial, "status": "completed", "result": result}
+            except Exception as exc:
+                final = {
+                    **initial,
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                }
+                receipt.seek(0)
+                receipt.truncate()
+                receipt.write(json.dumps(final, sort_keys=True) + "\n")
+                receipt.flush()
+                os.fsync(receipt.fileno())
+                raise
             receipt.seek(0)
             receipt.truncate()
             receipt.write(json.dumps(final, sort_keys=True) + "\n")
             receipt.flush()
             os.fsync(receipt.fileno())
-            raise
-        receipt.seek(0)
-        receipt.truncate()
-        receipt.write(json.dumps(final, sort_keys=True) + "\n")
-        receipt.flush()
-        os.fsync(receipt.fileno())
-    return {
-        "event_id": event["event_id"],
-        "status": "completed",
-        "duplicate": False,
-        "result": result,
-    }
+        return {
+            "event_id": event["event_id"],
+            "status": "completed",
+            "duplicate": False,
+            "result": result,
+        }
+    finally:
+        os.close(state_fd)
 
 
 def main() -> int:
