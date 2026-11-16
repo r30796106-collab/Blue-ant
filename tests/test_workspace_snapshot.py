@@ -152,3 +152,36 @@ def test_snapshot_rejects_symlinked_destination_parent(tmp_path: Path):
         create_workspace_snapshot(source, linked_parent / "snapshot")
 
     assert list(real_parent.iterdir()) == []
+
+
+
+def test_snapshot_skips_common_cloud_credential_stores(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    sensitive = {
+        ".aws/credentials": "aws-secret",
+        ".aws/sso/cache/token.json": "sso-token",
+        ".config/gcloud/application_default_credentials.json": "gcloud-token",
+        ".config/gcloud/legacy_credentials/user/adc.json": "legacy-token",
+        ".docker/config.json": "docker-auth",
+        ".kube/config": "kube-token",
+        ".azure/accessTokens.json": "azure-token",
+        ".azure/msal_token_cache.json": "msal-token",
+        ".terraform.d/credentials.tfrc.json": "terraform-token",
+        ".git-credentials": "git-token",
+    }
+    for relative, content in sensitive.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    (source / "src").mkdir()
+    (source / "src" / "app.py").write_text("safe", encoding="utf-8")
+
+    destination = tmp_path / "snapshot"
+    result = create_workspace_snapshot(source, destination)
+
+    assert result.files_copied == 1
+    assert (destination / "src" / "app.py").read_text(encoding="utf-8") == "safe"
+    assert set(result.skipped_sensitive_files) == set(sensitive)
+    for relative in sensitive:
+        assert not (destination / relative).exists()
