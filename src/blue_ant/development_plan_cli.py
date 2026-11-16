@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from .development_plan import generate_development_plan, plan_to_dict
+from .json_utils import strict_json_loads
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,8 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", default="blue-ant-development-plan.json")
     args = parser.parse_args(argv)
     try:
-        audit = json.loads(Path(args.audit_report).read_text(encoding="utf-8"))
-        tests = json.loads(Path(args.test_report).read_text(encoding="utf-8")) if args.test_report else None
+        audit = strict_json_loads(Path(args.audit_report).read_text(encoding="utf-8"))
+        tests = strict_json_loads(Path(args.test_report).read_text(encoding="utf-8")) if args.test_report else None
         plan = generate_development_plan(audit, tests, project_id=args.project_id, target_repository=args.target_repository, target_ref=args.target_ref)
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
