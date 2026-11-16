@@ -128,8 +128,9 @@ def stage_bundle(bundle: Any, output_dir: str | Path) -> dict[str, Any]:
     """
     validated = validate_bundle(bundle)
     root = Path(output_dir)
-    if root.is_symlink():
-        raise ValueError("staging output directory must not be a symlink")
+    for ancestor in (root, *root.parents):
+        if ancestor.is_symlink():
+            raise ValueError("staging output directory and parent directories must not be symlinks")
     root.mkdir(parents=True, exist_ok=True)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("staging output directory must be a real directory")
