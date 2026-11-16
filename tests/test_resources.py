@@ -479,9 +479,9 @@ def test_detect_applies_nested_cgroup_v2_cpuset_limits(tmp_path, monkeypatch) ->
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\n", encoding="ascii")
     (cgroup / "cpuset.cpus.effective").write_text("0-7", encoding="ascii")
     (tenant / "cpuset.cpus.effective").write_text("1-3,6", encoding="ascii")
     (service / "cpuset.cpus.effective").write_text("2-3", encoding="ascii")
@@ -501,13 +501,13 @@ def test_detect_applies_cgroup_v1_cpuset_parent_limit(tmp_path, monkeypatch) -> 
     (proc / "self").mkdir(parents=True)
     service.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
     (proc / "self" / "cgroup").write_text(
-        "7:cpuset:/tenant/service\\n", encoding="ascii"
+        "7:cpuset:/tenant/service\n", encoding="ascii"
     )
     (proc / "self" / "mountinfo").write_text(
-        f"32 23 0:29 / {cpuset} rw - cgroup cgroup rw,cpuset\\n",
+        f"32 23 0:29 / {cpuset} rw - cgroup cgroup rw,cpuset\n",
         encoding="ascii",
     )
     (cpuset / "cpuset.cpus").write_text("0-7", encoding="ascii")
@@ -527,7 +527,7 @@ def test_detect_ignores_invalid_cpuset_without_raising(tmp_path, monkeypatch) ->
     proc.mkdir()
     cgroup.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
     (cgroup / "cpuset.cpus.effective").write_text("0-3,broken", encoding="ascii")
     monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
