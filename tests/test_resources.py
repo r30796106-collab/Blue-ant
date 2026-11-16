@@ -143,3 +143,34 @@ def test_detect_ignores_unlimited_cgroup_v2_memory_and_cpu_limits(tmp_path, monk
 
     assert snapshot.available_memory_bytes == host_available
     assert snapshot.cpu_count == 6
+
+
+def test_detect_applies_parent_limits_for_nested_cgroup_v2(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    tenant = cgroup / "tenant"
+    service = tenant / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+
+    # The intermediate parent is more restrictive than both the root and leaf.
+    (cgroup / "memory.max").write_text(str(5 * 1024**3), encoding="ascii")
+    (cgroup / "memory.current").write_text(str(1024**3), encoding="ascii")
+    (tenant / "memory.max").write_text(str(2 * 1024**3), encoding="ascii")
+    (tenant / "memory.current").write_text(str(1536 * 1024**2), encoding="ascii")
+    (service / "memory.max").write_text(str(3 * 1024**3), encoding="ascii")
+    (service / "memory.current").write_text(str(1024**3), encoding="ascii")
+
+    (cgroup / "cpu.max").write_text("600000 100000", encoding="ascii")
+    (tenant / "cpu.max").write_text("150000 100000", encoding="ascii")
+    (service / "cpu.max").write_text("400000 100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 512 * 1024**2
