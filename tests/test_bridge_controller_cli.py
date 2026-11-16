@@ -49,3 +49,24 @@ def test_cli_writes_valid_json_decision(tmp_path, monkeypatch, capsys):
     assert result["action"] == "stop"
     assert output.read_text(encoding="utf-8").endswith("\n")
     assert '"status": "completed"' in capsys.readouterr().out
+
+
+def test_cli_rejects_duplicate_json_keys_before_writing_output(tmp_path, monkeypatch):
+    source = tmp_path / "bundle.json"
+    output = tmp_path / "decision.json"
+    source.write_text(
+        '{"schema_version": 1, "schema_version": 1}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["blue-ant-bridge-controller", "--input", str(source), "--output", str(output)],
+    )
+
+    try:
+        main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("CLI should reject duplicate JSON keys")
+    assert not output.exists()
