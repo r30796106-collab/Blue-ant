@@ -179,3 +179,17 @@ def test_rejects_invalid_audit_finding_severity():
     }]
     with pytest.raises(ValueError, match="invalid severity"):
         evaluate_bridge_result(value)
+
+
+def test_rejects_boolean_audit_report_schema_version():
+    value = bundle()
+    value["audit_report"]["schema_version"] = True
+    with pytest.raises(ValueError, match="audit_report"):
+        evaluate_bridge_result(value)
+
+
+def test_rejects_boolean_plan_schema_version():
+    value = bundle()
+    value["plan"]["schema_version"] = True
+    with pytest.raises(ValueError, match="plan"):
+        evaluate_bridge_result(value)
