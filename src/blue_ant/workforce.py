@@ -97,6 +97,20 @@ class Workforce:
             raise ValueError("at least one work assignment is required")
         if len(jobs) > self.max_tasks:
             raise ValueError("assignments exceed configured max_tasks")
+
+        # Validate the complete batch before audit records or workspace writes.
+        preflight_ids: set[str] = set()
+        for job in jobs:
+            if not isinstance(job, WorkAssignment):
+                raise ValueError("assignments must be WorkAssignment instances")
+            if not isinstance(job.task_id, str) or not _TASK_ID.fullmatch(job.task_id):
+                raise ValueError("task_id must be a lowercase slug")
+            if job.task_id in preflight_ids:
+                raise ValueError(f"duplicate task_id: {job.task_id}")
+            preflight_ids.add(job.task_id)
+            if not isinstance(job.role, SubBotRole):
+                raise ValueError("role must be an approved SubBotRole")
+            self.registry.get(job.project_id)
         if self.audit is not None:
             verification = self.audit.verify()
             if not verification.valid:
