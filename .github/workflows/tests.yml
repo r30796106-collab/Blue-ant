@@ -38,7 +38,7 @@ jobs:
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]"
       - name: Run test suite
-        run: python -m pytest
+        run: python -m pytest -n auto --dist worksteal
 
   package-smoke:
     runs-on: ubuntu-latest
