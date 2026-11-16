@@ -114,3 +114,39 @@ def test_runner_uses_isolated_snapshot_when_requested(tmp_path):
     assert (target / ".env").read_text(encoding="utf-8") == "TOKEN=keep-out"
     assert not (tmp_path / "out" / "workspaces").exists()
     assert not any((tmp_path / "out").rglob(".env"))
+
+
+def test_runner_replaces_artifact_symlink_without_writing_through_it(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    make_clean_target(target)
+    command = tmp_path / "command.json"
+    write_command(command, roles=["repo_analyst"])
+    output = tmp_path / "out"
+    output.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("keep unchanged", encoding="utf-8")
+    (output / "bridge-v3-test-audit.json").symlink_to(outside)
+
+    run_bridge_command(command, target, output)
+
+    assert outside.read_text(encoding="utf-8") == "keep unchanged"
+    assert not (output / "bridge-v3-test-audit.json").is_symlink()
+    assert json.loads((output / "bridge-v3-test-audit.json").read_text())["schema_version"] == 1
+
+
+def test_runner_rejects_symlinked_output_directory(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    make_clean_target(target)
+    command = tmp_path / "command.json"
+    write_command(command, roles=["repo_analyst"])
+    real_output = tmp_path / "real-output"
+    real_output.mkdir()
+    alias = tmp_path / "output-alias"
+    alias.symlink_to(real_output, target_is_directory=True)
+
+    import pytest
+    with pytest.raises(ValueError, match="output_dir"):
+        run_bridge_command(command, target, alias)
+    assert list(real_output.iterdir()) == []
