@@ -44,7 +44,7 @@ def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
         raise ValueError("event file must contain valid UTF-8 JSON") from exc
     if not isinstance(event, dict) or set(event) != _EVENT_KEYS:
         raise ValueError("event must contain exactly the four supported fields")
-    if event["schema_version"] != 1 or isinstance(event["schema_version"], bool):
+    if type(event["schema_version"]) is not int or event["schema_version"] != 1:
         raise ValueError("event schema_version must be integer 1")
     if event["event_type"] != "bridge.command":
         raise ValueError("unsupported event_type")
