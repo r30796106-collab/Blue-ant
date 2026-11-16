@@ -9,8 +9,11 @@ def test_pull_request_review_is_a_ci_dependent_check():
     workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
 
     assert "  read-only-review:" in workflow
-    assert "    needs: test" in workflow
+    assert "  package-smoke:" in workflow
+    assert "python -m build --sdist --wheel" in workflow
+    assert "    needs: [test, package-smoke]" in workflow
     assert "needs.test.result == 'success'" in workflow
+    assert "needs.package-smoke.result == 'success'" in workflow
     assert "github.event_name == 'pull_request'" in workflow
     assert "blue_ant.subbot_report" in workflow
     assert "blue-ant-subbot-report" in workflow
