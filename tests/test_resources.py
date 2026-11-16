@@ -668,3 +668,18 @@ def test_meminfo_ignores_numeric_tokens_beyond_python_integer_limit(tmp_path):
     path.write_text("MemTotal: " + "9" * 5000 + " kB\n", encoding="ascii")
 
     assert _read_meminfo(path) == {}
+
+
+
+def test_legacy_cpu_quota_reader_uses_bounded_v2_and_v1_readers(tmp_path, monkeypatch):
+    import blue_ant.resources as resources
+    from blue_ant.resources import _read_cpu_quota
+
+    monkeypatch.setattr(resources, "_MAX_CGROUP_SCALAR_BYTES", 8)
+    (tmp_path / "cpu.max").write_text("100000 100000", encoding="ascii")
+    cpu = tmp_path / "cpu"
+    cpu.mkdir()
+    (cpu / "cpu.cfs_quota_us").write_text("150000", encoding="ascii")
+    (cpu / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+
+    assert _read_cpu_quota(tmp_path) == (150000, 100000)
