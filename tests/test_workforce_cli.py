@@ -212,3 +212,75 @@ def test_cli_fails_closed_when_opt_in_detection_is_unsupported(tmp_path: Path, m
     else:
         raise AssertionError("unsupported resource detection must fail closed")
     assert not (tmp_path / "report.json").exists()
+
+
+
+def test_cli_calls_opt_in_resource_detection_exactly_once(tmp_path: Path, monkeypatch):
+    from blue_ant.resources import ResourceSnapshot
+
+    source = tmp_path / "sample"
+    source.mkdir()
+    (source / "README.md").write_text("# Sample\n", encoding="utf-8")
+    output = tmp_path / "report.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--roles", "docs_auditor",
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--detect-resources",
+        "--reserve-memory-mb", "0",
+        "--memory-per-worker-mb", "1",
+        "--output", str(output),
+    ])
+    calls = 0
+
+    def detect_once():
+        nonlocal calls
+        calls += 1
+        return ResourceSnapshot(cpu_count=2, available_memory_bytes=4 * 1024 * 1024)
+
+    monkeypatch.setattr("blue_ant.workforce_cli.ResourceSnapshot.detect", detect_once)
+
+    assert main() == 0
+    assert calls == 1
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["effective_max_workers"] == 2
+
+
+def test_cli_fails_closed_when_detected_memory_cannot_support_one_worker(
+    tmp_path: Path, monkeypatch
+):
+    from blue_ant.resources import ResourceSnapshot
+
+    source = tmp_path / "sample"
+    source.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--roles", "docs_auditor",
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--detect-resources",
+        "--reserve-memory-mb", "512",
+        "--memory-per-worker-mb", "256",
+        "--output", str(tmp_path / "report.json"),
+    ])
+    calls = 0
+
+    def detect_low_memory():
+        nonlocal calls
+        calls += 1
+        return ResourceSnapshot(cpu_count=4, available_memory_bytes=128 * 1024 * 1024)
+
+    monkeypatch.setattr("blue_ant.workforce_cli.ResourceSnapshot.detect", detect_low_memory)
+
+    try:
+        main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("insufficient detected memory must fail closed")
+
+    assert calls == 1
+    assert not (tmp_path / "report.json").exists()
