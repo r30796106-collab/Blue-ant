@@ -109,7 +109,7 @@ def test_detect_ignores_cgroup_v1_unlimited_memory_sentinel(tmp_path, monkeypatc
     cpu.mkdir()
     host_available = 2 * 1024**3
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 2097152 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
     )
     # Common cgroup v1 unlimited sentinel: far larger than physical RAM.
     (memory / "memory.limit_in_bytes").write_text(str(2**63 - 4096), encoding="ascii")
