@@ -33,9 +33,49 @@ jobs:
       - name: Run test suite
         run: python -m pytest
 
+  package-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build source and wheel distributions
+        run: |
+          python -m pip install build
+          python -m build --sdist --wheel
+      - name: Install wheel in a clean virtual environment and smoke-test console scripts
+        run: |
+          python -m venv .venv-wheel
+          .venv-wheel/bin/python -m pip install --no-deps dist/*.whl
+          .venv-wheel/bin/python - <<'PY'
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          scripts = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
+          bin_dir = Path(".venv-wheel/bin")
+          for name in sorted(scripts):
+              executable = bin_dir / name
+              if not executable.is_file():
+                  raise SystemExit(f"missing installed console script: {name}")
+              result = subprocess.run(
+                  [str(executable), "--help"],
+                  capture_output=True,
+                  text=True,
+                  timeout=15,
+                  check=False,
+              )
+              if result.returncode != 0 or "usage:" not in result.stdout.lower():
+                  raise SystemExit(
+                      f"{name} --help failed (exit {result.returncode}): {result.stderr[-2000:]}"
+                  )
+              print(f"PASS {name} --help")
+          PY
+
   read-only-review:
-    needs: test
-    if: github.event_name == 'pull_request' && needs.test.result == 'success'
+    needs: [test, package-smoke]
+    if: github.event_name == 'pull_request' && needs.test.result == 'success' && needs.package-smoke.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Blue Ant worker
