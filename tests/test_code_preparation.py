@@ -110,3 +110,10 @@ def test_prepare_plan_rejects_boolean_schema_version(tmp_path: Path):
     plan = {"schema_version": True, "plan_id": "plan-bool", "tasks": []}
     with pytest.raises(ValueError, match="schema v1"):
         prepare_plan(tmp_path, plan)
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])
+def test_prepare_plan_rejects_non_integer_schema_version(tmp_path: Path, schema_version):
+    plan = {"schema_version": schema_version, "plan_id": "plan-bad-version", "tasks": []}
+    with pytest.raises(ValueError, match="schema v1"):
+        prepare_plan(tmp_path, plan)
