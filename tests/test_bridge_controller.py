@@ -168,3 +168,14 @@ def test_safety_auditor_observation_requires_human_review_even_if_info():
     result = evaluate_bridge_result(value)
     assert result.status == "stopped"
     assert result.action == "human_review"
+
+
+def test_rejects_invalid_audit_finding_severity():
+    value = bundle()
+    value["audit_report"]["cycles"][0]["findings"] = [{
+        "severity": "critical-unrecognized",
+        "path": "src/example.py",
+        "message": "Malformed severity must not be treated as informational",
+    }]
+    with pytest.raises(ValueError, match="invalid severity"):
+        evaluate_bridge_result(value)
