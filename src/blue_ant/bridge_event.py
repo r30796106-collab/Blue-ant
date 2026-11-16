@@ -84,12 +84,13 @@ def _load_existing_receipt(
         )
         if set(prior) != expected_keys:
             raise ValueError("existing event receipt has an invalid schema")
+        if prior["event_sha256"] != event_hash:
+            raise ValueError("event_id was already used for a different event payload")
         if (
             type(prior["schema_version"]) is not int
             or prior["schema_version"] != 1
             or prior["event_id"] != event["event_id"]
             or prior["command_id"] != event["command_id"]
-            or prior["event_sha256"] != event_hash
         ):
             raise ValueError("existing event receipt does not match this event")
         if status == "completed" and not isinstance(prior["result"], dict):
