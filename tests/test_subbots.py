@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from blue_ant.subbots import SubBotFactory, SubBotRole, run_fleet
+from blue_ant.subbots import SubBot, SubBotFactory, SubBotRole, run_fleet
 
 
 def test_factory_creates_four_specialist_bots():
@@ -103,3 +103,23 @@ def test_test_auditor_accepts_recognized_unittest_workflow(tmp_path: Path):
     bot = SubBotFactory().create_fleet([SubBotRole.TEST_AUDITOR])[0]
     findings = bot.run(tmp_path)
     assert not any(item.severity == "warning" for item in findings)
+
+
+
+def test_index_prunes_ignored_directories_and_does_not_follow_directory_symlinks(tmp_path: Path):
+    (tmp_path / "README.md").write_text("# Example\\n", encoding="utf-8")
+    for directory in (".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"):
+        ignored = tmp_path / directory
+        ignored.mkdir()
+        (ignored / "hidden.py").write_text("secret = True\\n", encoding="utf-8")
+
+    outside = tmp_path.parent / "blue-ant-outside-tree"
+    outside.mkdir()
+    (outside / "outside.py").write_text("outside = True\\n", encoding="utf-8")
+    (tmp_path / "linked-tree").symlink_to(outside, target_is_directory=True)
+
+    indexed = SubBot.index_files(tmp_path)
+
+    assert [name for name, _ in indexed] == ["README.md"]
+    outside.joinpath("outside.py").unlink()
+    outside.rmdir()

@@ -8,6 +8,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import StrEnum
+import os
 from pathlib import Path
 import posixpath
 import re
@@ -110,19 +111,28 @@ def run_fleet(
 
 
 def _iter_text_files(root: Path):
+    """Walk only relevant source directories; prune generated trees before descent."""
     ignored = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build"}
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.is_symlink() or any(part in ignored for part in path.relative_to(root).parts):
-            continue
-        try:
-            resolved = path.resolve(strict=True)
-            resolved.relative_to(root)
-            if resolved.stat().st_size > 1_000_000:
+    repo = root.resolve()
+    for current_text, dir_names, file_names in os.walk(repo, topdown=True, followlinks=False):
+        current = Path(current_text)
+        dir_names[:] = [
+            name for name in sorted(dir_names)
+            if name not in ignored and not (current / name).is_symlink()
+        ]
+        for name in sorted(file_names):
+            path = current / name
+            if path.is_symlink() or not path.is_file():
                 continue
-            content = resolved.read_text(encoding="utf-8")
-        except (OSError, UnicodeError, ValueError):
-            continue
-        yield path.relative_to(root).as_posix(), content
+            try:
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(repo)
+                if resolved.stat().st_size > 1_000_000:
+                    continue
+                content = resolved.read_text(encoding="utf-8")
+            except (OSError, UnicodeError, ValueError):
+                continue
+            yield path.relative_to(repo).as_posix(), content
 
 
 def _inventory(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
