@@ -27,11 +27,18 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
           body = os.environ.get("ISSUE_BODY") or ""
           blocks = re.findall(r"```json\s*(.*?)\s*```", body, re.S)
           if len(blocks) != 1:
               raise SystemExit("Issue must contain exactly one structured JSON block")
-          data = json.loads(blocks[0])
+          data = json.loads(blocks[0], object_pairs_hook=unique_object)
           required = {"target_repository", "target_ref", "project_id", "plan", "task_id", "replacement_content", "apply_approved"}
           if not isinstance(data, dict) or set(data) != required:
               raise SystemExit("Invalid plan-task instruction schema")
@@ -84,7 +91,14 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          d=json.load(open("instruction/metadata.json", encoding="utf-8"))
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          d=json.load(open("instruction/metadata.json", encoding="utf-8"), object_pairs_hook=unique_object)
           for k in ("repository", "ref", "project", "task_id", "path"):
               print(f"{k}={d[k]}")
           PY
@@ -118,7 +132,14 @@ jobs:
           blue-ant-patch --workspace target --proposal instruction/proposal.json --approve
           python - <<'PY'
           import json
-          proposal=json.load(open("instruction/proposal.json", encoding="utf-8"))
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          proposal=json.load(open("instruction/proposal.json", encoding="utf-8"), object_pairs_hook=unique_object)
           with open("instruction/changed-paths.nul", "wb") as f:
               for item in proposal["changes"]:
                   f.write(item["path"].encode("utf-8") + bytes([0]))
