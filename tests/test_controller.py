@@ -47,7 +47,7 @@ def test_worker_exception_becomes_observation_and_loop_continues():
         decide_next=decide,
     )
     assert seen == ["failed", "failed"]
-    assert report.observations[0].summary == "RuntimeError: worker unavailable"
+    assert report.observations[0].summary == "RuntimeError"
     assert report.stop_reason == "controller_stopped"
 
 
@@ -74,3 +74,16 @@ def test_invalid_instruction_is_rejected_before_execution():
             execute=lambda item: LoopObservation(item.instruction_id, "ok", "done"),
             decide_next=lambda current, result, cycle: None,
         )
+
+
+
+def test_worker_exception_message_is_not_exposed_in_observation():
+    secret = "credential=do-not-store-this"
+    report = FeedbackLoop().run(
+        instruction(1),
+        execute=lambda item: (_ for _ in ()).throw(RuntimeError(secret)),
+        decide_next=lambda current, result, cycle: None,
+    )
+
+    assert report.observations[0].summary == "RuntimeError"
+    assert secret not in report.observations[0].summary
