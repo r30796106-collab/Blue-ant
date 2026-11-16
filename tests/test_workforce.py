@@ -406,3 +406,42 @@ def test_invalid_later_assignment_has_no_earlier_workspace_or_audit_side_effects
 
     assert not (workspace_root / "repo").exists()
     assert not audit_path.exists()
+
+
+
+def test_workforce_results_are_sorted_even_when_workers_finish_out_of_order(
+    tmp_path: Path, monkeypatch
+):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+
+    from blue_ant.subbots import SubBot
+
+    completion_order: list[str] = []
+    lock = threading.Lock()
+    delays = {
+        SubBotRole.DOCS_AUDITOR: 0.08,
+        SubBotRole.TEST_AUDITOR: 0.04,
+        SubBotRole.REPO_ANALYST: 0.02,
+        SubBotRole.SAFETY_AUDITOR: 0.0,
+    }
+
+    def measured_run(self, root, *, indexed_files=None):
+        time.sleep(delays[self.role])
+        with lock:
+            completion_order.append(self.role.value)
+        return []
+
+    monkeypatch.setattr(SubBot, "run", measured_run)
+    results = Workforce(registry, max_workers=4).run([
+        WorkAssignment("z-docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("m-repo", "repo", SubBotRole.REPO_ANALYST),
+        WorkAssignment("b-safety", "repo", SubBotRole.SAFETY_AUDITOR),
+        WorkAssignment("a-tests", "repo", SubBotRole.TEST_AUDITOR),
+    ])
+
+    assert completion_order[0] == SubBotRole.SAFETY_AUDITOR.value
+    assert [result.task_id for result in results] == [
+        "a-tests", "b-safety", "m-repo", "z-docs"
+    ]
