@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import threading
 import time
 
@@ -336,3 +337,42 @@ def test_scheduler_failure_propagation_is_independent_of_task_name_order() -> No
     assert results["m-middle"].status == TaskStatus.BLOCKED
     assert results["a-leaf"].status == TaskStatus.BLOCKED
     assert calls == []
+
+
+@pytest.mark.parametrize("seed", [7, 23, 101])
+@pytest.mark.parametrize("workers", [1, 4])
+def test_scheduler_respects_randomized_dag_dependencies(seed: int, workers: int) -> None:
+    rng = random.Random(seed)
+    task_count = 48
+    dependencies: dict[str, tuple[str, ...]] = {}
+    for index in range(task_count):
+        task_id = f"task-{index:03d}"
+        dependencies[task_id] = tuple(
+            f"task-{parent:03d}"
+            for parent in range(index)
+            if rng.random() < 0.08
+        )
+
+    completed: set[str] = set()
+    lock = threading.Lock()
+
+    def make_work(task_id: str, parents: tuple[str, ...]):
+        def work() -> str:
+            with lock:
+                assert set(parents) <= completed
+                completed.add(task_id)
+            return task_id
+
+        return work
+
+    tasks = [
+        TaskSpec(task_id, make_work(task_id, parents), depends_on=parents)
+        for task_id, parents in dependencies.items()
+    ]
+    rng.shuffle(tasks)
+
+    results = Scheduler(max_workers=workers).run(tasks)
+
+    assert len(results) == task_count
+    assert all(result.status == TaskStatus.SUCCEEDED for result in results.values())
+    assert completed == set(dependencies)
