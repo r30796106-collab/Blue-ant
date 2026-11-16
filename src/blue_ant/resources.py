@@ -39,4 +39,6 @@ class ResourcePolicy:
         """Return a safe positive worker cap; never exceed configured or CPU limits."""
         usable = max(0, snapshot.available_memory_bytes - self.reserve_memory_bytes)
         memory_cap = usable // self.memory_per_worker_bytes
-        return max(1, min(self.max_workers, snapshot.cpu_count, memory_cap))
+        if memory_cap < 1:
+            raise ValueError("insufficient available memory for one worker")
+        return min(self.max_workers, snapshot.cpu_count, memory_cap)
