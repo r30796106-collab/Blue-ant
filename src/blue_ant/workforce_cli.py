@@ -144,7 +144,7 @@ def main() -> int:
         failed = sum(item.error is not None for item in results)
         print(f"Blue Ant workforce: {len(projects)} projects, {len(results)} parallel assignments, {failed} errors -> {output}")
         return 1 if failed else 0
-    except (ValueError, OSError, KeyError) as exc:
+    except (ValueError, OSError, KeyError, RuntimeError) as exc:
         parser.error(str(exc))
         return 2
 
