@@ -33,7 +33,7 @@ def validate_bundle(bundle: Any) -> dict[str, Any]:
     required = {"schema_version", "target_repository", "target_ref", "project_id", "apply_approved", "tasks"}
     if not isinstance(bundle, dict) or set(bundle) != required:
         raise ValueError("bundle must contain exactly: " + ", ".join(sorted(required)))
-    if bundle["schema_version"] != 1:
+    if isinstance(bundle["schema_version"], bool) or bundle["schema_version"] != 1:
         raise ValueError("unsupported bundle schema_version")
     if bundle["apply_approved"] is not True:
         raise PermissionError("bundle requires explicit apply_approved=true")
