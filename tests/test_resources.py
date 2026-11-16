@@ -122,3 +122,24 @@ def test_detect_ignores_cgroup_v1_unlimited_memory_sentinel(tmp_path, monkeypatc
 
     assert snapshot.available_memory_bytes == host_available
     assert snapshot.cpu_count == 2
+
+
+
+def test_detect_ignores_unlimited_cgroup_v2_memory_and_cpu_limits(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    proc.mkdir()
+    cgroup.mkdir()
+    host_available = 1536 * 1024**2
+    (proc / "meminfo").write_text(
+        "MemTotal: 4194304 kB\\nMemAvailable: 1572864 kB\\n", encoding="ascii"
+    )
+    (cgroup / "memory.max").write_text("max", encoding="ascii")
+    (cgroup / "memory.current").write_text(str(512 * 1024**2), encoding="ascii")
+    (cgroup / "cpu.max").write_text("max 100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == host_available
+    assert snapshot.cpu_count == 6
