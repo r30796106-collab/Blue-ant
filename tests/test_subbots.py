@@ -227,3 +227,34 @@ def test_index_skips_hardlinked_files_to_avoid_external_content(tmp_path: Path):
 
     assert SubBot.index_files(repo) == ()
     assert outside.read_text(encoding="utf-8") == "credential=must-not-be-indexed"
+
+
+
+def test_index_does_not_follow_directory_swapped_to_symlink(tmp_path: Path, monkeypatch):
+    import os
+    import blue_ant.subbots as subbots
+
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "ordinary.txt").write_text("ordinary", encoding="utf-8")
+    held = tmp_path / "nested-held"
+    outside = tmp_path.parent / "blue-ant-index-directory-secret"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("must-not-index", encoding="utf-8")
+    original_open = os.open
+    swapped = False
+
+    def swap_directory_then_open(path, flags, *args, **kwargs):
+        nonlocal swapped
+        if path == "nested" and kwargs.get("dir_fd") is not None and not swapped:
+            swapped = True
+            nested.rename(held)
+            nested.symlink_to(outside, target_is_directory=True)
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(subbots.os, "open", swap_directory_then_open)
+
+    assert SubBot.index_files(tmp_path) == ()
+    assert swapped
+    assert (held / "ordinary.txt").read_text(encoding="utf-8") == "ordinary"
+    assert (outside / "secret.txt").read_text(encoding="utf-8") == "must-not-index"
