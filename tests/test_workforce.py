@@ -55,10 +55,10 @@ def test_worker_failure_isolated_from_other_assignments(tmp_path: Path, monkeypa
 
     original_run = SubBot.run
 
-    def selective_run(self, root):
+    def selective_run(self, root, *, indexed_files=None):
         if self.role == SubBotRole.SAFETY_AUDITOR:
             raise RuntimeError("test worker failure")
-        return original_run(self, root)
+        return original_run(self, root, indexed_files=indexed_files)
 
     monkeypatch.setattr(SubBot, "run", selective_run)
     results = Workforce(registry, max_workers=2).run([
@@ -155,6 +155,35 @@ def test_shared_snapshot_mode_copies_once_per_project_and_keeps_task_workspaces_
     assert sum(event["snapshot_reused"] for event in prepared) == 1
     assert all(event["snapshot_mode"] == "shared_project" for event in prepared)
     assert AuditLog(audit_path).verify().valid is True
+
+
+def test_shared_snapshot_indexes_project_once_for_multiple_specialists(tmp_path: Path, monkeypatch):
+    source = make_project(tmp_path, "repo")
+    registry = ProjectRegistry(tmp_path / "workspaces")
+    registry.register("repo", source)
+    from blue_ant.subbots import SubBot
+
+    original_index = SubBot.index_files
+    calls = []
+
+    def counted_index(root):
+        calls.append(Path(root))
+        return original_index(root)
+
+    monkeypatch.setattr(SubBot, "index_files", staticmethod(counted_index))
+    results = Workforce(
+        registry, snapshot_sources=True, shared_snapshot_sources=True, max_workers=2
+    ).run([
+        WorkAssignment("index-docs", "repo", SubBotRole.DOCS_AUDITOR),
+        WorkAssignment("index-tests", "repo", SubBotRole.TEST_AUDITOR),
+        WorkAssignment("index-repo", "repo", SubBotRole.REPO_ANALYST),
+        WorkAssignment("index-safety", "repo", SubBotRole.SAFETY_AUDITOR),
+    ])
+
+    assert len(results) == 4
+    assert all(result.error is None for result in results)
+    assert len(calls) == 1
+    assert calls[0].name == "shared-source"
 
 
 def test_shared_snapshot_mode_requires_snapshot_sources(tmp_path: Path):
@@ -263,7 +292,7 @@ def test_workforce_audit_redacts_worker_exception_message(tmp_path: Path, monkey
     audit_path = tmp_path / "audit.jsonl"
 
     from blue_ant.subbots import SubBot
-    def fail_with_sensitive_message(self, root):
+    def fail_with_sensitive_message(self, root, *, indexed_files=None):
         raise RuntimeError("credential=do-not-store-this")
 
     monkeypatch.setattr(SubBot, "run", fail_with_sensitive_message)

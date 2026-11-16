@@ -121,10 +121,12 @@ and the workspace is not automatically deleted or overwritten on reruns.
 
 For read-only specialist fleets, add `--shared-snapshot-sources` alongside
 `--snapshot-sources` to copy each registered project once and reuse that
-private snapshot across its workers. Every assignment still receives a
-separate task workspace; workers only read the shared snapshot. The shared
-snapshot is retained under the project workspace and is not overwritten on a
-rerun. This option requires `--snapshot-sources`; the ChatGPT bridge uses
+private snapshot across its workers. The fixed specialists also build one
+bounded in-memory text index from that shared snapshot and reuse it, avoiding
+repeated directory walks and file reads. Every assignment still receives a
+separate task workspace; workers only read the shared snapshot/index. The
+shared snapshot is retained under the project workspace and is not overwritten
+on a rerun. This option requires `--snapshot-sources`; the ChatGPT bridge uses
 shared snapshots automatically when snapshot mode is requested.
 
 For resource-aware concurrency on a constrained device, provide a CPU count
