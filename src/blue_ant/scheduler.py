@@ -104,7 +104,7 @@ class Scheduler:
                         value = future.result()
                     except Exception as exc:  # task boundary: capture worker failure
                         self._record("task_attempt_failed", task_id=task.task_id, attempt=attempt, error_type=type(exc).__name__)
-                        if attempt < task.max_attempts:
+                        if task.retry_safe and attempt < task.max_attempts:
                             retry = pool.submit(task.run)
                             running[retry] = (task, attempt + 1)
                             self._record("task_retry", task_id=task.task_id, attempt=attempt + 1)
