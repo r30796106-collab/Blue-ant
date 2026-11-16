@@ -40,18 +40,18 @@ def evaluate_bridge_result(bundle: Any) -> ControllerDecision:
         "schema_version", "command", "audit_report", "plan"
     }:
         raise ValueError("bundle must contain exactly schema_version, command, audit_report, plan")
-    if bundle["schema_version"] != 1 or isinstance(bundle["schema_version"], bool):
+    if type(bundle["schema_version"]) is not int or bundle["schema_version"] != 1:
         raise ValueError("bundle schema_version must be integer 1")
     command = validate_bridge_command(bundle["command"])
     audit = bundle["audit_report"]
     plan = bundle["plan"]
-    if not isinstance(audit, dict) or isinstance(audit.get("schema_version"), bool) or audit.get("schema_version") != 1:
+    if not isinstance(audit, dict) or type(audit.get("schema_version")) is not int or audit.get("schema_version") != 1:
         raise ValueError("audit_report must be a schema_version 1 object")
     if audit.get("mode") not in {"bounded_sequential_read_only_audit_loop", "bounded_parallel_read_only_audit"}:
         raise ValueError("unsupported audit report mode")
     if audit.get("project_id") != command["project_id"]:
         raise ValueError("audit project does not match command")
-    if not isinstance(plan, dict) or isinstance(plan.get("schema_version"), bool) or plan.get("schema_version") != 1:
+    if not isinstance(plan, dict) or type(plan.get("schema_version")) is not int or plan.get("schema_version") != 1:
         raise ValueError("plan must be a schema_version 1 object")
     if plan.get("project_id") != command["project_id"]:
         raise ValueError("plan project does not match command")

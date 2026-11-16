@@ -194,3 +194,13 @@ def test_rejects_boolean_plan_schema_version():
     value["plan"]["schema_version"] = True
     with pytest.raises(ValueError, match="plan"):
         evaluate_bridge_result(value)
+
+
+@pytest.mark.parametrize("location", ["bundle", "audit_report", "plan"])
+@pytest.mark.parametrize("schema_version", [1.0, "1"])
+def test_rejects_non_integer_schema_versions(location, schema_version):
+    value = bundle()
+    target = value if location == "bundle" else value[location]
+    target["schema_version"] = schema_version
+    with pytest.raises(ValueError, match="schema_version|schema_version 1"):
+        evaluate_bridge_result(value)
