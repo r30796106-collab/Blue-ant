@@ -193,3 +193,29 @@ def test_persistent_registry_rejects_non_integer_schema_version(tmp_path: Path, 
 
     with pytest.raises(ValueError, match="schema_version"):
         ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_duplicate_json_keys(tmp_path: Path):
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(
+        '{"schema_version": 1, "schema_version": 1, "projects": []}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
+
+
+def test_persistent_registry_rejects_nested_duplicate_json_keys(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(
+        '{"schema_version": 1, "projects": ['
+        '{"project_id": "project", "source_root": "x", "source_root": "y"}'
+        ']}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
