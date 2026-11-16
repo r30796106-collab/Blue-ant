@@ -123,3 +123,42 @@ def test_index_prunes_ignored_directories_and_does_not_follow_directory_symlinks
     assert [name for name, _ in indexed] == ["README.md"]
     outside.joinpath("outside.py").unlink()
     outside.rmdir()
+
+
+
+def test_index_enforces_file_count_limit(tmp_path: Path, monkeypatch):
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_INDEX_FILES", 2)
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    indexed = SubBot.index_files(tmp_path)
+
+    assert [name for name, _ in indexed] == ["a.txt", "b.txt"]
+
+
+def test_index_enforces_total_byte_limit_without_partial_files(tmp_path: Path, monkeypatch):
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_INDEX_BYTES", 5)
+    monkeypatch.setattr(subbots, "_MAX_INDEX_FILE_BYTES", 5)
+    (tmp_path / "a.txt").write_text("1234", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("5678", encoding="utf-8")
+    (tmp_path / "c.txt").write_text("x", encoding="utf-8")
+
+    indexed = SubBot.index_files(tmp_path)
+
+    assert indexed == (("a.txt", "1234"), ("c.txt", "x"))
+
+
+def test_index_skips_single_file_over_per_file_limit(tmp_path: Path, monkeypatch):
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_INDEX_FILE_BYTES", 3)
+    (tmp_path / "large.txt").write_text("1234", encoding="utf-8")
+    (tmp_path / "small.txt").write_text("12", encoding="utf-8")
+
+    indexed = SubBot.index_files(tmp_path)
+
+    assert indexed == (("small.txt", "12"),)
