@@ -8,11 +8,12 @@ import sys
 
 from .audit import AuditLog
 from .patches import FileChange, PatchProposal, apply_patch_proposal
+from .json_utils import strict_json_loads
 
 
 def load_proposal(path: str | Path) -> PatchProposal:
     """Load a strict JSON patch proposal from disk."""
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw = strict_json_loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or set(raw) != {"proposal_id", "project_id", "task_id", "changes"}:
         raise ValueError("proposal must contain exactly proposal_id, project_id, task_id, changes")
     if not isinstance(raw["changes"], list):
