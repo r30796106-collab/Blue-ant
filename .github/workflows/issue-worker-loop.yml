@@ -19,8 +19,15 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
           raw = os.environ.get("ISSUE_BODY") or ""
-          instruction = json.loads(raw)
+          instruction = json.loads(raw, object_pairs_hook=unique_object)
           required = {"instruction_id", "project_id", "repository", "ref", "worker_role", "task"}
           if not isinstance(instruction, dict) or set(instruction) != required:
               raise SystemExit("Issue body must be a JSON object with exactly: " + ", ".join(sorted(required)))
@@ -49,7 +56,14 @@ jobs:
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          data = json.load(open("instruction/task.json", encoding="utf-8"))
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate JSON object key: {key}")
+                  result[key] = value
+              return result
+          data = json.load(open("instruction/task.json", encoding="utf-8"), object_pairs_hook=unique_object)
           for key in ("instruction_id", "project_id", "repository", "ref", "worker_role"):
               print(f"{key}={data[key]}")
           PY
