@@ -544,3 +544,22 @@ def test_read_cpu_set_count_merges_overlapping_ranges(tmp_path) -> None:
     cpuset.write_text("0-3,2-5,7", encoding="ascii")
 
     assert _read_cpu_set_count(cpuset) == 7
+
+
+
+def test_read_cpu_set_count_ignores_integer_tokens_beyond_python_limit(tmp_path) -> None:
+    from blue_ant.resources import _read_cpu_set_count
+
+    cpuset = tmp_path / "cpuset.cpus"
+    cpuset.write_text("9" * 5000, encoding="ascii")
+
+    assert _read_cpu_set_count(cpuset) is None
+
+
+def test_read_cpu_set_count_ignores_oversized_range_endpoint(tmp_path) -> None:
+    from blue_ant.resources import _read_cpu_set_count
+
+    cpuset = tmp_path / "cpuset.cpus"
+    cpuset.write_text("0-" + "9" * 5000, encoding="ascii")
+
+    assert _read_cpu_set_count(cpuset) is None
