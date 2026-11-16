@@ -267,11 +267,11 @@ def test_detect_uses_mount_root_when_process_is_at_mount_root(tmp_path, monkeypa
     (proc / "self").mkdir(parents=True)
     cgroup.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant\n", encoding="ascii")
     (proc / "self" / "mountinfo").write_text(
-        f"29 23 0:26 /tenant {cgroup} rw - cgroup2 cgroup rw\\n",
+        f"29 23 0:26 /tenant {cgroup} rw - cgroup2 cgroup rw\n",
         encoding="ascii",
     )
     (cgroup / "memory.max").write_text(str(2 * 1024**3), encoding="ascii")
@@ -295,9 +295,9 @@ def test_detect_preserves_direct_membership_mapping_without_mountinfo(tmp_path, 
     (proc / "self").mkdir(parents=True)
     tenant.mkdir(parents=True)
     (proc / "meminfo").write_text(
-        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
     )
-    (proc / "self" / "cgroup").write_text("0::/tenant\\n", encoding="ascii")
+    (proc / "self" / "cgroup").write_text("0::/tenant\n", encoding="ascii")
     (cgroup / "memory.max").write_text(str(4 * 1024**3), encoding="ascii")
     (cgroup / "memory.current").write_text(str(1024**3), encoding="ascii")
     (tenant / "memory.max").write_text(str(2 * 1024**3), encoding="ascii")
