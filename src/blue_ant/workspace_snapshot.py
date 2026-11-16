@@ -82,6 +82,30 @@ def _is_sensitive_file(relative: Path) -> bool:
     )
 
 
+def _open_snapshot_source_file(root_fd: int, relative: Path, nofollow: int) -> int:
+    """Open a source file beneath an anchored root without following path symlinks."""
+    directory_fd = os.dup(root_fd)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    try:
+        for component in relative.parts[:-1]:
+            next_fd = os.open(
+                component,
+                os.O_RDONLY | directory_flag | nofollow,
+                dir_fd=directory_fd,
+            )
+            os.close(directory_fd)
+            directory_fd = next_fd
+            if not stat.S_ISDIR(os.fstat(directory_fd).st_mode):
+                raise ValueError("source path component is not a directory")
+        return os.open(
+            relative.parts[-1],
+            os.O_RDONLY | nofollow,
+            dir_fd=directory_fd,
+        )
+    finally:
+        os.close(directory_fd)
+
+
 def _remove_partial_snapshot(root: Path, files: list[Path], directories: list[Path]) -> None:
     for path in reversed(files):
         try:
@@ -159,6 +183,9 @@ def create_workspace_snapshot(
     files_copied = 0
     bytes_copied = 0
     nofollow = getattr(os, "O_NOFOLLOW", 0)
+    source_root_fd = os.open(
+        source, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
+    )
 
     try:
         for current_text, dir_names, file_names in os.walk(
@@ -210,12 +237,14 @@ def create_workspace_snapshot(
                         directory.mkdir(mode=0o700)
                         created_directories.append(directory)
 
-                source_fd = os.open(source_file, os.O_RDONLY | nofollow)
+                source_fd = _open_snapshot_source_file(source_root_fd, relative, nofollow)
                 target_fd = -1
                 try:
                     before = os.fstat(source_fd)
                     if not stat.S_ISREG(before.st_mode):
                         raise ValueError(f"source changed to a non-regular file: {relative}")
+                    if (before.st_dev, before.st_ino) != (info.st_dev, info.st_ino):
+                        raise ValueError(f"source path changed while opening: {relative}")
                     if before.st_nlink > 1:
                         raise ValueError(f"source changed to a hard-linked file: {relative}")
                     if before.st_size > max_file_bytes:
@@ -278,3 +307,5 @@ def create_workspace_snapshot(
             except OSError:
                 pass
         raise
+    finally:
+        os.close(source_root_fd)
