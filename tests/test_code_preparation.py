@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from blue_ant.code_preparation import prepare_plan, prepare_task
 
 
@@ -102,3 +104,9 @@ def test_cli_writes_drafts_without_modifying_target(tmp_path: Path):
     result = json.loads(output.read_text(encoding="utf-8"))
     assert result["prepared_tasks"][0]["status"] == "prepared"
     assert (workspace / "README.md").read_text(encoding="utf-8") == original
+
+
+def test_prepare_plan_rejects_boolean_schema_version(tmp_path: Path):
+    plan = {"schema_version": True, "plan_id": "plan-bool", "tasks": []}
+    with pytest.raises(ValueError, match="schema v1"):
+        prepare_plan(tmp_path, plan)
