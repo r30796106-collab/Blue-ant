@@ -32,7 +32,7 @@ class ResourceSnapshot:
 
         This method performs a one-time read only when explicitly called. It
         starts with host MemAvailable/CPU count, then applies tighter cgroup
-        memory and CPU quota limits when those files are available. Unsupported
+        memory, CPU quota, and cpuset limits when those files are available. Unsupported
         hosts or missing MemAvailable data fail closed with RuntimeError.
         """
         proc = Path(proc_root)
@@ -95,6 +95,22 @@ class ResourceSnapshot:
                     cpu_count,
                     *(max(1, quota // period) for quota, period in v1_cpu_limits),
                 )
+
+        v2_cpuset_limits = [
+            count
+            for directory in v2_dirs
+            if (count := _read_cpu_set_count(directory / "cpuset.cpus.effective")) is not None
+        ]
+        if v2_cpuset_limits:
+            cpu_count = min(cpu_count, *v2_cpuset_limits)
+        else:
+            v1_cpuset_limits = [
+                count
+                for directory in _cgroup_v1_dirs(proc, cgroup, "cpuset")
+                if (count := _read_cpu_set_count(directory / "cpuset.cpus")) is not None
+            ]
+            if v1_cpuset_limits:
+                cpu_count = min(cpu_count, *v1_cpuset_limits)
 
         return cls(cpu_count=cpu_count, available_memory_bytes=available_memory)
 
@@ -240,6 +256,42 @@ def _cgroup_v1_dirs(
         current = current / part
         directories.append(current)
     return tuple(directories)
+
+
+
+def _read_cpu_set_count(path: Path) -> int | None:
+    """Return the number of CPUs in a Linux cpulist, or None if unavailable/invalid."""
+    try:
+        value = path.read_text(encoding="ascii").strip()
+    except OSError:
+        return None
+    if not value:
+        return None
+
+    ranges: list[tuple[int, int]] = []
+    for item in value.split(","):
+        if "-" in item:
+            parts = item.split("-")
+            if len(parts) != 2 or not all(part.isdigit() for part in parts):
+                return None
+            start, end = map(int, parts)
+            if end < start:
+                return None
+        elif item.isdigit():
+            start = end = int(item)
+        else:
+            return None
+        ranges.append((start, end))
+
+    ranges.sort()
+    count = 0
+    last_end = -1
+    for start, end in ranges:
+        if end <= last_end:
+            continue
+        count += end - max(start, last_end + 1) + 1
+        last_end = end
+    return count if count > 0 else None
 
 
 def _read_v1_cpu_quota(directory: Path) -> tuple[int, int] | None:
