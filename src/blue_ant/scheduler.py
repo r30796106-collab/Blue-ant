@@ -79,7 +79,7 @@ class Scheduler:
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="blue-ant") as pool:
             while pending or running:
-                        # Propagate failures with a queue so each dependency edge is
+                # Propagate failures with a queue so each dependency edge is
                 # visited at most once, independent of task-name ordering.
                 while blocked_queue:
                     failed_id = blocked_queue.popleft()
