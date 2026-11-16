@@ -9,6 +9,7 @@ from typing import Iterable
 from .audit import AuditLog
 from .models import TaskResult, TaskSpec, TaskStatus
 from .policy import Policy
+from .resources import ResourcePolicy, ResourceSnapshot
 
 
 _MAX_WORKERS = 16
@@ -28,12 +29,20 @@ class Scheduler:
         policy: Policy | None = None,
         audit_path: str | Path | None = None,
         max_tasks: int = _MAX_TASKS,
+        resource_snapshot: ResourceSnapshot | None = None,
+        resource_policy: ResourcePolicy | None = None,
     ) -> None:
         if not 1 <= max_workers <= _MAX_WORKERS:
             raise ValueError(f"max_workers must be between 1 and {_MAX_WORKERS}")
         if not 1 <= max_tasks <= _MAX_TASKS:
             raise ValueError(f"max_tasks must be between 1 and {_MAX_TASKS}")
-        self.max_workers = max_workers
+        effective_workers = max_workers
+        if resource_snapshot is not None:
+            effective_workers = min(
+                max_workers,
+                (resource_policy or ResourcePolicy(max_workers=max_workers)).worker_limit(resource_snapshot),
+            )
+        self.max_workers = effective_workers
         self.max_tasks = max_tasks
         self.policy = policy or Policy()
         self.audit = AuditLog(audit_path) if audit_path is not None else None
