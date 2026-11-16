@@ -577,6 +577,7 @@ def test_read_cpu_set_count_ignores_non_ascii_host_data(tmp_path) -> None:
 
 def test_read_cpu_set_count_bounds_input_size(tmp_path, monkeypatch) -> None:
     import blue_ant.resources as resources
+    from blue_ant.resources import _read_cpu_set_count
 
     monkeypatch.setattr(resources, "_MAX_CPUSET_TEXT_BYTES", 8)
     cpuset = tmp_path / "cpuset.cpus"
