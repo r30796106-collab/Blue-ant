@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .bridge_controller import decision_to_dict, evaluate_bridge_result
+from .json_utils import strict_json_loads
 
 
 def main() -> int:
@@ -17,7 +18,7 @@ def main() -> int:
         source = Path(args.input)
         if source.stat().st_size > 2_500_000:
             raise ValueError("result bundle exceeds the 2.5 MB limit")
-        bundle = json.loads(source.read_text(encoding="utf-8"))
+        bundle = strict_json_loads(source.read_text(encoding="utf-8"))
         decision = decision_to_dict(evaluate_bridge_result(bundle))
         destination = Path(args.output)
         destination.parent.mkdir(parents=True, exist_ok=True)
