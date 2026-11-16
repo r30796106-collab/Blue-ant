@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
- _MAX_CPUSET_TEXT_BYTES = 65_536
+_MAX_CPUSET_TEXT_BYTES = 65_536
 _MAX_PROC_MEMINFO_BYTES = 1024 * 1024
 _MAX_PROC_CGROUP_BYTES = 64 * 1024
 _MAX_PROC_MOUNTINFO_BYTES = 1024 * 1024
