@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+import heapq
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Iterable
@@ -75,12 +76,15 @@ class Scheduler:
             for dependency_id in task.depends_on:
                 dependents[dependency_id].append(task.task_id)
         blocked_queue: deque[str] = deque()
+        remaining_dependencies = {task_id: len(task.depends_on) for task_id, task in by_id.items()}
+        ready_queue = [task_id for task_id, count in remaining_dependencies.items() if count == 0]
+        heapq.heapify(ready_queue)
         running: dict[Future[object], tuple[TaskSpec, int]] = {}
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="blue-ant") as pool:
             while pending or running:
-                # Propagate failures with a queue so each dependency edge is
-                # visited at most once, independent of task-name ordering.
+                # Each dependency edge is processed once. A min-heap preserves
+                # deterministic task-id ordering without rescanning all pending tasks.
                 while blocked_queue:
                     failed_id = blocked_queue.popleft()
                     for dependent_id in dependents[failed_id]:
@@ -96,21 +100,12 @@ class Scheduler:
                         blocked_queue.append(dependent_id)
                         self._record("task_blocked", task_id=dependent_id)
 
-                while len(running) < self.max_workers:
-                    ready = next(
-                        (
-                            by_id[task_id]
-                            for task_id in sorted(pending)
-                            if all(
-                                dep in results and results[dep].status == TaskStatus.SUCCEEDED
-                                for dep in by_id[task_id].depends_on
-                            )
-                        ),
-                        None,
-                    )
-                    if ready is None:
-                        break
-                    pending.remove(ready.task_id)
+                while ready_queue and len(running) < self.max_workers:
+                    task_id = heapq.heappop(ready_queue)
+                    if task_id not in pending:
+                        continue
+                    ready = by_id[task_id]
+                    pending.remove(task_id)
                     future = pool.submit(ready.run)
                     running[future] = (ready, 1)
                     self._record("task_started", task_id=ready.task_id, attempt=1)
@@ -139,6 +134,12 @@ class Scheduler:
                     else:
                         results[task.task_id] = TaskResult(task.task_id, TaskStatus.SUCCEEDED, attempt, value=value)
                         self._record("task_succeeded", task_id=task.task_id, attempts=attempt)
+                        for dependent_id in dependents[task.task_id]:
+                            if dependent_id not in pending:
+                                continue
+                            remaining_dependencies[dependent_id] -= 1
+                            if remaining_dependencies[dependent_id] == 0:
+                                heapq.heappush(ready_queue, dependent_id)
 
         return results
 
