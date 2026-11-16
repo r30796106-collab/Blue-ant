@@ -374,3 +374,94 @@ def test_detect_keeps_cgroup_v1_direct_fallback_without_membership(tmp_path, mon
 
     assert snapshot.cpu_count == 1
     assert snapshot.available_memory_bytes == 1536 * 1024**2
+
+
+
+def test_detect_maps_cgroup_v1_membership_relative_to_non_root_mount(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup-mount"
+    tenant = cgroup / "service"
+    (proc / "self").mkdir(parents=True)
+    (tenant / "nested").mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "5:memory:/tenant/service\n6:cpu,cpuacct:/tenant/service\n",
+        encoding="ascii",
+    )
+    (proc / "self" / "mountinfo").write_text(
+        f"30 23 0:27 /tenant {cgroup} rw - cgroup cgroup rw,memory\n"
+        f"31 23 0:28 /tenant {cgroup / 'cpu'} rw - cgroup cgroup rw,cpu,cpuacct\n",
+        encoding="ascii",
+    )
+    (cgroup / "memory.limit_in_bytes").write_text(str(4 * 1024**3), encoding="ascii")
+    (cgroup / "memory.usage_in_bytes").write_text(str(1024**3), encoding="ascii")
+    (tenant / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
+    (tenant / "memory.usage_in_bytes").write_text(str(1536 * 1024**2), encoding="ascii")
+    cpu_root = cgroup / "cpu"
+    cpu_leaf = cpu_root / "service"
+    cpu_leaf.mkdir(parents=True)
+    (cpu_root / "cpu.cfs_quota_us").write_text("400000", encoding="ascii")
+    (cpu_root / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    (cpu_leaf / "cpu.cfs_quota_us").write_text("150000", encoding="ascii")
+    (cpu_leaf / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+def test_detect_decodes_escaped_cgroup_v1_mountpoint(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup mount"
+    (proc / "self").mkdir(parents=True)
+    cgroup.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "5:memory:/tenant\n", encoding="ascii"
+    )
+    escaped = str(cgroup).replace(" ", r"\040")
+    (proc / "self" / "mountinfo").write_text(
+        f"30 23 0:27 /tenant {escaped} rw - cgroup cgroup rw,memory\n",
+        encoding="ascii",
+    )
+    (cgroup / "memory.limit_in_bytes").write_text(str(2 * 1024**3), encoding="ascii")
+    (cgroup / "memory.usage_in_bytes").write_text(str(1024**3), encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 4)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == 1024**3
+
+
+def test_detect_fails_safe_for_cgroup_v1_membership_outside_mount_root(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup-mount"
+    unrelated = cgroup / "tenant"
+    (proc / "self").mkdir(parents=True)
+    unrelated.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 3145728 kB\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text(
+        "5:memory:/tenant/service\n", encoding="ascii"
+    )
+    (proc / "self" / "mountinfo").write_text(
+        f"30 23 0:27 /other {cgroup} rw - cgroup cgroup rw,memory\n",
+        encoding="ascii",
+    )
+    # A mismatched root must not make the membership path resolve under this mount.
+    (cgroup / "memory.limit_in_bytes").write_text(str(4 * 1024**3), encoding="ascii")
+    (cgroup / "memory.usage_in_bytes").write_text(str(1024**3), encoding="ascii")
+    (unrelated / "memory.limit_in_bytes").write_text(str(512 * 1024**2), encoding="ascii")
+    (unrelated / "memory.usage_in_bytes").write_text("0", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 4)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == 3 * 1024**3
