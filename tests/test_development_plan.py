@@ -164,3 +164,10 @@ def test_cli_accepts_target_metadata_without_test_report(tmp_path):
     assert result["target_repository"] == "r30796106-collab/demo"
     assert result["target_ref"] == "main"
     assert result["apply_approved"] is False
+
+
+def test_rejects_boolean_audit_report_schema_version():
+    report = audit_report()
+    report["schema_version"] = True
+    with pytest.raises(ValueError, match="schema_version 1"):
+        generate_development_plan(report, None, project_id="demo")
