@@ -129,7 +129,7 @@ def test_cli_detect_resources_is_explicit_and_reports_detected_capacity(tmp_path
     ])
     monkeypatch.setattr(
         "blue_ant.workforce_cli.ResourceSnapshot.detect",
-        lambda: ResourceSnapshot(cpu_count=3, available_memory_bytes=1024 * 1024),
+        lambda: ResourceSnapshot(cpu_count=3, available_memory_bytes=10 * 1024 * 1024),
     )
 
     assert main() == 0
