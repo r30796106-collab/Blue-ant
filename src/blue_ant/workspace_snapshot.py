@@ -237,7 +237,15 @@ def create_workspace_snapshot(
                                 raise OSError("short write while creating workspace snapshot")
                             view = view[written:]
                     after = os.fstat(source_fd)
-                    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                    before_identity = (
+                        before.st_dev, before.st_ino, before.st_size,
+                        before.st_mtime_ns, before.st_ctime_ns, before.st_nlink,
+                    )
+                    after_identity = (
+                        after.st_dev, after.st_ino, after.st_size,
+                        after.st_mtime_ns, after.st_ctime_ns, after.st_nlink,
+                    )
+                    if before_identity != after_identity:
                         raise ValueError(f"source file changed while snapshotting: {relative}")
                     os.fsync(target_fd)
                 finally:

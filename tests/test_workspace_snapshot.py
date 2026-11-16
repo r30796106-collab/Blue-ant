@@ -205,3 +205,32 @@ def test_snapshot_rejects_hardlinked_source_files_and_rolls_back(tmp_path: Path)
 
     assert not destination.exists()
     assert outside_secret.read_text(encoding="utf-8") == "credential=must-not-enter-snapshot"
+
+
+
+def test_snapshot_detects_same_size_mutation_even_if_mtime_is_restored(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    source_file = source / "mutable.txt"
+    source_file.write_text("before", encoding="utf-8")
+    original_stat = source_file.stat()
+    destination = tmp_path / "snapshot"
+    real_read = os.read
+    changed = False
+
+    def mutate_after_read(fd: int, size: int) -> bytes:
+        nonlocal changed
+        data = real_read(fd, size)
+        if not changed and data:
+            changed = True
+            source_file.write_text("after!", encoding="utf-8")
+            os.utime(source_file, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        return data
+
+    monkeypatch.setattr(os, "read", mutate_after_read)
+    with pytest.raises(ValueError, match="changed while snapshotting"):
+        create_workspace_snapshot(source, destination)
+
+    assert changed
+    assert not destination.exists()
+    assert source_file.read_text(encoding="utf-8") == "after!"
