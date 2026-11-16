@@ -55,7 +55,9 @@ class ProjectRegistry:
         """Load a strict, versioned registry and revalidate every source root."""
         path = self.registry_path
         assert path is not None
-        for ancestor in (path, path.parent, *path.parent.parents):
+        if path.is_symlink():
+            raise ValueError("registry_path must be a regular, non-symlink file")
+        for ancestor in (path.parent, *path.parent.parents):
             if ancestor.is_symlink():
                 raise ValueError("registry_path and its parent directories must not be symlinks")
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
