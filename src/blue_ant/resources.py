@@ -9,6 +9,21 @@ from pathlib import Path, PurePosixPath
 
 
 _MAX_CPUSET_TEXT_BYTES = 65_536
+_MAX_PROC_MEMINFO_BYTES = 1024 * 1024
+_MAX_PROC_CGROUP_BYTES = 64 * 1024
+_MAX_PROC_MOUNTINFO_BYTES = 1024 * 1024
+
+
+def _read_bounded_proc_lines(path: Path, max_bytes: int) -> tuple[str, ...] | None:
+    """Read bounded ASCII procfs metadata, returning None for invalid input."""
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None
+        return tuple(raw.decode("ascii").splitlines())
+    except (OSError, UnicodeError):
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,25 +135,28 @@ class ResourceSnapshot:
 
 def _read_meminfo(path: Path) -> dict[str, int]:
     values: dict[str, int] = {}
-    try:
-        lines = path.read_text(encoding="ascii").splitlines()
-    except OSError as exc:
-        raise RuntimeError("Linux /proc/meminfo is unavailable") from exc
+    lines = _read_bounded_proc_lines(path, _MAX_PROC_MEMINFO_BYTES)
+    if lines is None:
+        raise RuntimeError("Linux /proc/meminfo is unavailable or invalid")
     for line in lines:
         key, separator, remainder = line.partition(":")
         if not separator:
             continue
         fields = remainder.split()
         if fields and fields[0].isdigit():
-            values[key] = int(fields[0])
+            try:
+                values[key] = int(fields[0])
+            except ValueError:
+                continue
     return values
 
 
 def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
     """Return the visible cgroup v2 mount root and this process's ancestors."""
-    try:
-        lines = (proc_root / "self" / "cgroup").read_text(encoding="ascii").splitlines()
-    except OSError:
+    lines = _read_bounded_proc_lines(
+        proc_root / "self" / "cgroup", _MAX_PROC_CGROUP_BYTES
+    )
+    if lines is None:
         return (cgroup_root,)
 
     membership = next(
@@ -154,10 +172,7 @@ def _cgroup_v2_dirs(proc_root: Path, cgroup_root: Path) -> tuple[Path, ...]:
 
     mount_root = PurePosixPath("/")
     mountinfo = proc_root / "self" / "mountinfo"
-    try:
-        mount_lines = mountinfo.read_text(encoding="ascii").splitlines()
-    except OSError:
-        mount_lines = []
+    mount_lines = _read_bounded_proc_lines(mountinfo, _MAX_PROC_MOUNTINFO_BYTES) or ()
 
     for line in mount_lines:
         before, separator, after = line.partition(" - ")
@@ -195,9 +210,10 @@ def _cgroup_v1_dirs(
 ) -> tuple[Path, ...]:
     """Return the visible cgroup v1 controller mount and process ancestors."""
     controller_root = cgroup_root / controller
-    try:
-        lines = (proc_root / "self" / "cgroup").read_text(encoding="ascii").splitlines()
-    except OSError:
+    lines = _read_bounded_proc_lines(
+        proc_root / "self" / "cgroup", _MAX_PROC_CGROUP_BYTES
+    )
+    if lines is None:
         return (controller_root,)
 
     membership = None
@@ -220,12 +236,9 @@ def _cgroup_v1_dirs(
         return (controller_root,)
 
     mount_root = PurePosixPath("/")
-    try:
-        mount_lines = (proc_root / "self" / "mountinfo").read_text(
-            encoding="ascii"
-        ).splitlines()
-    except OSError:
-        mount_lines = []
+    mount_lines = _read_bounded_proc_lines(
+        proc_root / "self" / "mountinfo", _MAX_PROC_MOUNTINFO_BYTES
+    ) or ()
 
     for line in mount_lines:
         before, separator, after = line.partition(" - ")
