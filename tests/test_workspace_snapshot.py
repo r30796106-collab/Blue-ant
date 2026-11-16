@@ -271,3 +271,19 @@ def test_snapshot_does_not_follow_directory_swapped_to_symlink_before_open(tmp_p
     assert not destination.exists()
     assert (held / "ordinary.txt").read_text(encoding="utf-8") == "ordinary"
     assert (outside / "secret.txt").read_text(encoding="utf-8") == "must-not-copy"
+
+
+def test_snapshot_rejects_fifo_source_and_cleans_partial_output(tmp_path):
+    import os
+
+    source = tmp_path / "source"
+    destination = tmp_path / "snapshot"
+    source.mkdir()
+    (source / "regular.txt").write_text("safe", encoding="utf-8")
+    fifo = source / "named-pipe"
+    os.mkfifo(fifo)
+
+    with pytest.raises(ValueError, match="regular"):
+        create_workspace_snapshot(source, destination)
+
+    assert not destination.exists()
