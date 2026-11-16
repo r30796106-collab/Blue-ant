@@ -27,11 +27,23 @@ _MAX_EVENT_BYTES = 16 * 1024
 
 def _load_event(path: str | Path) -> tuple[dict[str, Any], str]:
     event_path = Path(path)
-    if event_path.is_symlink() or not event_path.is_file():
-        raise ValueError("event path must be a regular, non-symlink file")
-    raw = event_path.read_bytes()
-    if not raw or len(raw) > _MAX_EVENT_BYTES:
-        raise ValueError("event file must be between 1 byte and 16 KiB")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(event_path, flags)
+    except OSError as exc:
+        raise ValueError("event path must be a regular, non-symlink file") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("event path must be a regular, non-symlink file")
+        if info.st_size > _MAX_EVENT_BYTES:
+            raise ValueError("event file must be between 1 byte and 16 KiB")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(_MAX_EVENT_BYTES + 1)
+        if not raw or len(raw) > _MAX_EVENT_BYTES:
+            raise ValueError("event file must be between 1 byte and 16 KiB")
+    finally:
+        os.close(fd)
     try:
         event = strict_json_loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
