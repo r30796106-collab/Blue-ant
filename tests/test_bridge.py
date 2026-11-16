@@ -95,7 +95,7 @@ def test_load_rejects_duplicate_top_level_json_keys(tmp_path):
         load_bridge_command(source)
 
 
-def test_load_rejects_duplicate_nested_json_keys(tmp_path):
+def test_load_rejects_duplicate_roles_field(tmp_path):
     command = valid_command()
     command_text = json.dumps(command)
     command_text = command_text.replace(
