@@ -204,7 +204,7 @@ limits fail closed.
 - No shell execution, package installation, project-code execution, deployment, or real-money trading.
 - Task workspaces are separated directories, not OS-level sandboxes.
 - Parallelism is bounded (1–16 workers); the GitHub matrix runs at most four repositories concurrently.
-- Patch generation, approval, application, and post-change verification are the next developer-worker milestone.
+- A guarded, hash-checked patch proposal and apply pipeline exists as a separate human-gated capability; it does not execute target code, run tests, deploy, or push automatically.
 
 ## Reuse-first strategy
 
@@ -261,7 +261,7 @@ the chain. Back up or externally anchor important audit hashes.
 
 ## Verification status
 
-The core, sub-bot fleet, project registry/workspaces, and approved patch pipeline have passed GitHub Actions on Python 3.12. The patch CLI is covered by CI in the current pull request.
+The main CI workflow tests the package on Python 3.12, 3.13, and 3.14. PR #186 added subprocess smoke tests for all 13 packaged CLI entrypoints; its three Python-version test jobs and independent read-only review check passed before merge. This records PR validation, not a separate post-merge test run.
 
 
 ## Approved coding-worker patch pipeline (v2 foundation)
