@@ -320,3 +320,19 @@ def test_scheduler_blocks_transitive_dependents_after_upstream_failure() -> None
     assert results["middle"].status == TaskStatus.BLOCKED
     assert results["leaf"].status == TaskStatus.BLOCKED
     assert calls == []
+
+
+def test_scheduler_failure_propagation_is_independent_of_task_name_order() -> None:
+    calls: list[str] = []
+    results = Scheduler().run(
+        [
+            TaskSpec("z-root", lambda: (_ for _ in ()).throw(RuntimeError("root failed"))),
+            TaskSpec("a-leaf", lambda: calls.append("leaf"), depends_on=("m-middle",)),
+            TaskSpec("m-middle", lambda: calls.append("middle"), depends_on=("z-root",)),
+        ]
+    )
+
+    assert results["z-root"].status == TaskStatus.FAILED
+    assert results["m-middle"].status == TaskStatus.BLOCKED
+    assert results["a-leaf"].status == TaskStatus.BLOCKED
+    assert calls == []

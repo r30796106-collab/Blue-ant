@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Iterable
@@ -69,32 +70,31 @@ class Scheduler:
         self._check_cycles(by_id)
         results: dict[str, TaskResult] = {}
         pending = set(by_id)
+        dependents: dict[str, list[str]] = {task_id: [] for task_id in by_id}
+        for task in task_list:
+            for dependency_id in task.depends_on:
+                dependents[dependency_id].append(task.task_id)
+        blocked_queue: deque[str] = deque()
         running: dict[Future[object], tuple[TaskSpec, int]] = {}
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="blue-ant") as pool:
             while pending or running:
-                # Propagate blocked status through the full dependency chain
-                # before scheduling. A single pass is insufficient when a child
-                # is visited before its parent is marked blocked.
-                blocked_any = True
-                while blocked_any:
-                    blocked_any = False
-                    for task_id in sorted(pending):
-                        task = by_id[task_id]
-                        dependency_results = [results.get(dep) for dep in task.depends_on]
-                        if any(
-                            result is not None and result.status != TaskStatus.SUCCEEDED
-                            for result in dependency_results
-                        ):
-                            results[task_id] = TaskResult(
-                                task_id,
-                                TaskStatus.BLOCKED,
-                                0,
-                                error="dependency did not succeed",
-                            )
-                            pending.remove(task_id)
-                            self._record("task_blocked", task_id=task_id)
-                            blocked_any = True
+                        # Propagate failures with a queue so each dependency edge is
+                # visited at most once, independent of task-name ordering.
+                while blocked_queue:
+                    failed_id = blocked_queue.popleft()
+                    for dependent_id in dependents[failed_id]:
+                        if dependent_id not in pending:
+                            continue
+                        results[dependent_id] = TaskResult(
+                            dependent_id,
+                            TaskStatus.BLOCKED,
+                            0,
+                            error="dependency did not succeed",
+                        )
+                        pending.remove(dependent_id)
+                        blocked_queue.append(dependent_id)
+                        self._record("task_blocked", task_id=dependent_id)
 
                 while len(running) < self.max_workers:
                     ready = next(
@@ -135,6 +135,7 @@ class Scheduler:
                             results[task.task_id] = TaskResult(
                                 task.task_id, TaskStatus.FAILED, attempt, error=f"{type(exc).__name__}: {exc}"
                             )
+                            blocked_queue.append(task.task_id)
                     else:
                         results[task.task_id] = TaskResult(task.task_id, TaskStatus.SUCCEEDED, attempt, value=value)
                         self._record("task_succeeded", task_id=task.task_id, attempts=attempt)
