@@ -20,6 +20,7 @@ _MAX_INDEX_FILES = 5000
 _MAX_INDEX_BYTES = 50 * 1024 * 1024
 _MAX_INDEX_FILE_BYTES = 1_000_000
 _MAX_SAFETY_FINDINGS = 1_000
+_MAX_DOCS_FINDINGS = 100
 
 
 class SubBotRole(StrEnum):
@@ -279,22 +280,49 @@ def _docs_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
 
     names = {name for name, _ in files}
     findings: list[Finding] = []
+    truncated = False
+
+    def add_finding(finding: Finding) -> None:
+        nonlocal truncated
+        if len(findings) >= _MAX_DOCS_FINDINGS:
+            truncated = True
+        else:
+            findings.append(finding)
+
+    link_pattern = re.compile(r"!?\\[[^\\]]*\\]\\(([^)]*)\\)")
     for readme_path, content in readmes:
-        lines = content.splitlines()
         fence_open = False
-        for line_no, line in enumerate(lines, 1):
-            if line.lstrip().startswith("```"):
+        for line in content.splitlines():
+            if line.lstrip().startswith(chr(96) * 3):
                 fence_open = not fence_open
         if fence_open:
-            findings.append(Finding(
+            add_finding(Finding(
                 bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
                 "README contains an unclosed fenced code block."
             ))
+            if truncated:
+                break
 
-        link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
         for match in link_pattern.finditer(content):
-            destination = match.group(1).strip().split()[0].strip("<>")
-            if (not destination or destination.startswith(("#", "/", "//"))
+            destination_text = match.group(1).strip()
+            if not destination_text:
+                add_finding(Finding(
+                    bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
+                    "README contains a relative link with an empty destination."
+                ))
+                if truncated:
+                    break
+                continue
+            destination = destination_text.split()[0].strip("<>")
+            if not destination:
+                add_finding(Finding(
+                    bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
+                    "README contains a relative link with an empty destination."
+                ))
+                if truncated:
+                    break
+                continue
+            if (destination.startswith(("#", "/", "//"))
                 or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", destination)):
                 continue
             local_target = destination.split("#", 1)[0].split("?", 1)[0]
@@ -302,13 +330,21 @@ def _docs_audit(bot_id: str, files: list[tuple[str, str]]) -> list[Finding]:
                 continue
             resolved = posixpath.normpath(posixpath.join(posixpath.dirname(readme_path), local_target))
             if resolved.startswith("../") or resolved not in names:
-                findings.append(Finding(
+                add_finding(Finding(
                     bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", readme_path,
                     f"README contains a relative link to a missing repository file: {destination[:160]}"
                 ))
-                if len(findings) >= 20:
+                if truncated:
                     break
-    if not findings:
+        if truncated:
+            break
+
+    if truncated:
+        findings.append(Finding(
+            bot_id, SubBotRole.DOCS_AUDITOR.value, "warning", ".",
+            f"Documentation audit finding limit reached ({_MAX_DOCS_FINDINGS}); remaining findings were omitted."
+        ))
+    elif not findings:
         findings.append(Finding(
             bot_id, SubBotRole.DOCS_AUDITOR.value, "info",
             readmes[0][0], "README is present; no unclosed code fences or broken relative links were detected."
