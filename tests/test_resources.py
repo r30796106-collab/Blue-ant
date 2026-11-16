@@ -96,3 +96,29 @@ def test_detect_fails_closed_when_memavailable_is_missing(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="MemAvailable"):
         ResourceSnapshot.detect(proc_root=proc, cgroup_root=tmp_path / "cgroup")
+
+
+
+def test_detect_ignores_cgroup_v1_unlimited_memory_sentinel(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup"
+    memory = cgroup / "memory"
+    cpu = cgroup / "cpu"
+    proc.mkdir()
+    memory.mkdir(parents=True)
+    cpu.mkdir()
+    host_available = 2 * 1024**3
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\nMemAvailable: 2097152 kB\n", encoding="ascii"
+    )
+    # Common cgroup v1 unlimited sentinel: far larger than physical RAM.
+    (memory / "memory.limit_in_bytes").write_text(str(2**63 - 4096), encoding="ascii")
+    (memory / "memory.usage_in_bytes").write_text(str(512 * 1024**2), encoding="ascii")
+    (cpu / "cpu.cfs_quota_us").write_text("200000", encoding="ascii")
+    (cpu / "cpu.cfs_period_us").write_text("100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.available_memory_bytes == host_available
+    assert snapshot.cpu_count == 2
