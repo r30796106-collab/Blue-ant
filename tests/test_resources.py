@@ -56,7 +56,7 @@ def test_detect_uses_host_capacity_when_cgroup_limits_are_unavailable(tmp_path, 
     proc.mkdir()
     cgroup.mkdir()
     (proc / "meminfo").write_text(
-        "MemTotal: 4096000 kB\nMemAvailable: 1024000 kB\n", encoding="ascii"
+        "MemTotal: 4096000 kB\nMemAvailable: 1048576 kB\n", encoding="ascii"
     )
     monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 6)
 
