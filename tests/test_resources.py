@@ -174,3 +174,33 @@ def test_detect_applies_parent_limits_for_nested_cgroup_v2(tmp_path, monkeypatch
 
     assert snapshot.cpu_count == 1
     assert snapshot.available_memory_bytes == 512 * 1024**2
+
+
+def test_detect_maps_membership_relative_to_non_root_cgroup2_mount(tmp_path, monkeypatch) -> None:
+    proc = tmp_path / "proc"
+    cgroup = tmp_path / "cgroup-mount"
+    service = cgroup / "service"
+    (proc / "self").mkdir(parents=True)
+    service.mkdir(parents=True)
+    (proc / "meminfo").write_text(
+        "MemTotal: 8388608 kB\\nMemAvailable: 3145728 kB\\n", encoding="ascii"
+    )
+    (proc / "self" / "cgroup").write_text("0::/tenant/service\\n", encoding="ascii")
+    (proc / "self" / "mountinfo").write_text(
+        f"29 23 0:26 /tenant {cgroup} rw,nosuid,nodev - cgroup2 cgroup rw\\n",
+        encoding="ascii",
+    )
+
+    # cgroup_root represents the mountpoint for /tenant, not hierarchy /.
+    (cgroup / "memory.max").write_text(str(4 * 1024**3), encoding="ascii")
+    (cgroup / "memory.current").write_text(str(1024**3), encoding="ascii")
+    (service / "memory.max").write_text(str(2 * 1024**3), encoding="ascii")
+    (service / "memory.current").write_text(str(1536 * 1024**2), encoding="ascii")
+    (cgroup / "cpu.max").write_text("400000 100000", encoding="ascii")
+    (service / "cpu.max").write_text("150000 100000", encoding="ascii")
+    monkeypatch.setattr("blue_ant.resources.os.cpu_count", lambda: 8)
+
+    snapshot = ResourceSnapshot.detect(proc_root=proc, cgroup_root=cgroup)
+
+    assert snapshot.cpu_count == 1
+    assert snapshot.available_memory_bytes == 512 * 1024**2
