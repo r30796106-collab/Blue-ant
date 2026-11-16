@@ -158,3 +158,57 @@ def test_cli_rejects_detect_resources_with_manual_capacity(tmp_path: Path, monke
         assert exc.code == 2
     else:
         raise AssertionError("conflicting resource options must be rejected")
+
+
+
+def test_cli_does_not_probe_resources_without_explicit_opt_in(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample"
+    source.mkdir()
+    (source / "README.md").write_text("# Sample\\n", encoding="utf-8")
+    output = tmp_path / "report.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--roles", "docs_auditor",
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--output", str(output),
+    ])
+
+    def unexpected_probe():
+        raise AssertionError("resource detection must remain opt-in")
+
+    monkeypatch.setattr("blue_ant.workforce_cli.ResourceSnapshot.detect", unexpected_probe)
+
+    assert main() == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["resource_detection"] is None
+    assert report["resource_snapshot"] is None
+    assert report["effective_max_workers"] == 4
+
+
+def test_cli_fails_closed_when_opt_in_detection_is_unsupported(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample"
+    source.mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--roles", "docs_auditor",
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--detect-resources",
+        "--output", str(tmp_path / "report.json"),
+    ])
+
+    def unsupported_host():
+        raise RuntimeError("Linux /proc/meminfo is unavailable")
+
+    monkeypatch.setattr("blue_ant.workforce_cli.ResourceSnapshot.detect", unsupported_host)
+
+    try:
+        main()
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("unsupported resource detection must fail closed")
+    assert not (tmp_path / "report.json").exists()
