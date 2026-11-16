@@ -185,3 +185,24 @@ def test_scheduler_retries_only_when_explicitly_marked_safe() -> None:
     assert attempts == 2
     assert result.status == TaskStatus.SUCCEEDED
     assert result.attempts == 2
+
+
+def test_scheduler_clamps_workers_to_supplied_resource_snapshot() -> None:
+    from blue_ant.resources import ResourceSnapshot
+
+    scheduler = Scheduler(
+        max_workers=8,
+        resource_snapshot=ResourceSnapshot(cpu_count=2, available_memory_bytes=2 * 1024 * 1024 * 1024),
+    )
+
+    assert scheduler.max_workers == 2
+
+
+def test_scheduler_rejects_snapshot_without_capacity_for_one_worker() -> None:
+    from blue_ant.resources import ResourceSnapshot
+
+    with pytest.raises(ValueError, match="insufficient available memory"):
+        Scheduler(
+            max_workers=4,
+            resource_snapshot=ResourceSnapshot(cpu_count=4, available_memory_bytes=100),
+        )
