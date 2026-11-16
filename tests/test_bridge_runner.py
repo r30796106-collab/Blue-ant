@@ -150,3 +150,25 @@ def test_runner_rejects_symlinked_output_directory(tmp_path):
     with pytest.raises(ValueError, match="output_dir"):
         run_bridge_command(command, target, alias)
     assert list(real_output.iterdir()) == []
+
+
+
+def test_runner_rejects_symlinked_output_parent_without_creating_through_it(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    make_clean_target(target)
+    command = tmp_path / "command.json"
+    write_command(command, roles=["repo_analyst"])
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "output-parent-alias"
+    alias.symlink_to(outside, target_is_directory=True)
+    requested_output = alias / "new-output"
+
+    import pytest
+    with pytest.raises(ValueError, match="output_dir"):
+        run_bridge_command(command, target, requested_output)
+
+    assert not (outside / "new-output").exists()
+    assert list(outside.iterdir()) == []
