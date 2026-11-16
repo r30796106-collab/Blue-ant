@@ -1,5 +1,7 @@
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 from blue_ant.workforce_cli import main
@@ -284,3 +286,52 @@ def test_cli_fails_closed_when_detected_memory_cannot_support_one_worker(
 
     assert calls == 1
     assert not (tmp_path / "report.json").exists()
+
+
+def test_cli_detected_resources_limit_actual_worker_concurrency(tmp_path: Path, monkeypatch):
+    from blue_ant.resources import ResourceSnapshot
+    from blue_ant.subbots import SubBot
+
+    source = tmp_path / "sample"
+    source.mkdir()
+    (source / "README.md").write_text("# Sample\\n", encoding="utf-8")
+    output = tmp_path / "report.json"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "blue-ant-workforce",
+        "--project", "sample=" + str(source),
+        "--workspace-root", str(tmp_path / "workspaces"),
+        "--max-workers", "8",
+        "--detect-resources",
+        "--reserve-memory-mb", "0",
+        "--memory-per-worker-mb", "1",
+        "--output", str(output),
+    ])
+    monkeypatch.setattr(
+        "blue_ant.workforce_cli.ResourceSnapshot.detect",
+        lambda: ResourceSnapshot(cpu_count=3, available_memory_bytes=2 * 1024 * 1024),
+    )
+
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def measured_run(self, root, indexed_files=None):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+        return ()
+
+    monkeypatch.setattr(SubBot, "run", measured_run)
+
+    assert main() == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert len(report["assignments"]) == 4
+    assert report["requested_max_workers"] == 8
+    assert report["effective_max_workers"] == 2
+    assert peak == 2
+    assert all(item["error"] is None for item in report["assignments"])
