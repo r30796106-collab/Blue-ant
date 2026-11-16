@@ -185,3 +185,23 @@ def test_snapshot_skips_common_cloud_credential_stores(tmp_path: Path):
     assert set(result.skipped_sensitive_files) == set(sensitive)
     for relative in sensitive:
         assert not (destination / relative).exists()
+
+
+
+def test_snapshot_rejects_hardlinked_source_files_and_rolls_back(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a-safe.txt").write_text("copied first", encoding="utf-8")
+    outside_secret = tmp_path / "outside-secret.txt"
+    outside_secret.write_text("credential=must-not-enter-snapshot", encoding="utf-8")
+    try:
+        os.link(outside_secret, source / "z-linked.txt")
+    except OSError:
+        pytest.skip("hard links are unavailable on this filesystem")
+
+    destination = tmp_path / "snapshot"
+    with pytest.raises(ValueError, match="hard-linked file"):
+        create_workspace_snapshot(source, destination)
+
+    assert not destination.exists()
+    assert outside_secret.read_text(encoding="utf-8") == "credential=must-not-enter-snapshot"

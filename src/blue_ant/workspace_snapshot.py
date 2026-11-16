@@ -183,6 +183,8 @@ def create_workspace_snapshot(
                 info = source_file.lstat()
                 if not stat.S_ISREG(info.st_mode):
                     raise ValueError(f"source contains a non-regular file: {relative}")
+                if info.st_nlink > 1:
+                    raise ValueError(f"source contains a hard-linked file: {relative}")
                 if info.st_size > max_file_bytes:
                     raise ValueError(f"source file exceeds {max_file_bytes} bytes: {relative}")
                 if files_copied + 1 > max_files:
@@ -208,6 +210,8 @@ def create_workspace_snapshot(
                     before = os.fstat(source_fd)
                     if not stat.S_ISREG(before.st_mode):
                         raise ValueError(f"source changed to a non-regular file: {relative}")
+                    if before.st_nlink > 1:
+                        raise ValueError(f"source changed to a hard-linked file: {relative}")
                     if before.st_size > max_file_bytes:
                         raise ValueError(f"source file exceeds {max_file_bytes} bytes: {relative}")
                     target_fd = os.open(
