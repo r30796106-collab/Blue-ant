@@ -185,3 +185,13 @@ def test_cli_writes_proposal_json_without_approval(tmp_path):
     proposal = json.loads(output.read_text(encoding="utf-8"))
     assert proposal["task_id"] == "review-finding-1"
     assert proposal["changes"][0]["expected_sha256"]
+
+
+def test_rejects_boolean_development_plan_schema_version(tmp_path):
+    value = plan()
+    value["schema_version"] = True
+    with pytest.raises(ValueError, match="schema_version 1"):
+        build_patch_proposal(
+            tmp_path, value, "review-finding-1",
+            [{"path": "src/example.py", "content": "new = True\n"}],
+        )
