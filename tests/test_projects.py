@@ -181,3 +181,11 @@ def test_registry_remains_in_memory_when_persistence_is_not_requested(tmp_path: 
 
     assert registry.get("project").source_root == source.resolve()
     assert not registry_path.exists()
+
+
+def test_persistent_registry_rejects_boolean_schema_version(tmp_path: Path):
+    registry_path = tmp_path / "projects.json"
+    registry_path.write_text(json.dumps({"schema_version": True, "projects": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema_version"):
+        ProjectRegistry(tmp_path / "workspaces", registry_path=registry_path)
