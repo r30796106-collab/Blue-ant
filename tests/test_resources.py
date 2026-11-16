@@ -563,3 +563,24 @@ def test_read_cpu_set_count_ignores_oversized_range_endpoint(tmp_path) -> None:
     cpuset.write_text("0-" + "9" * 5000, encoding="ascii")
 
     assert _read_cpu_set_count(cpuset) is None
+
+
+
+def test_read_cpu_set_count_ignores_non_ascii_host_data(tmp_path) -> None:
+    from blue_ant.resources import _read_cpu_set_count
+
+    cpuset = tmp_path / "cpuset.cpus"
+    cpuset.write_bytes(b"0-3,\xff")
+
+    assert _read_cpu_set_count(cpuset) is None
+
+
+def test_read_cpu_set_count_bounds_input_size(tmp_path, monkeypatch) -> None:
+    import blue_ant.resources as resources
+    from blue_ant.resources import _read_cpu_set_count
+
+    monkeypatch.setattr(resources, "_MAX_CPUSET_TEXT_BYTES", 8)
+    cpuset = tmp_path / "cpuset.cpus"
+    cpuset.write_text("0," * 5, encoding="ascii")
+
+    assert _read_cpu_set_count(cpuset) is None
