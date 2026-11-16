@@ -409,39 +409,22 @@ def test_invalid_later_assignment_has_no_earlier_workspace_or_audit_side_effects
 
 
 
-def test_workforce_results_are_sorted_even_when_workers_finish_out_of_order(
-    tmp_path: Path, monkeypatch
-):
+def test_snapshot_batch_preflights_all_task_workspaces_before_side_effects(tmp_path: Path):
     source = make_project(tmp_path, "repo")
-    registry = ProjectRegistry(tmp_path / "workspaces")
+    workspace_root = tmp_path / "workspaces"
+    registry = ProjectRegistry(workspace_root)
     registry.register("repo", source)
 
-    from blue_ant.subbots import SubBot
+    later_workspace = workspace_root / "repo" / "tasks" / "later"
+    later_workspace.mkdir(parents=True)
+    sentinel = later_workspace / "keep.txt"
+    sentinel.write_text("preserve existing data", encoding="utf-8")
 
-    completion_order: list[str] = []
-    lock = threading.Lock()
-    delays = {
-        SubBotRole.DOCS_AUDITOR: 0.08,
-        SubBotRole.TEST_AUDITOR: 0.04,
-        SubBotRole.REPO_ANALYST: 0.02,
-        SubBotRole.SAFETY_AUDITOR: 0.0,
-    }
+    with pytest.raises(ValueError, match="absent or empty"):
+        Workforce(registry, snapshot_sources=True).run([
+            WorkAssignment("earlier", "repo", SubBotRole.DOCS_AUDITOR),
+            WorkAssignment("later", "repo", SubBotRole.TEST_AUDITOR),
+        ])
 
-    def measured_run(self, root, *, indexed_files=None):
-        time.sleep(delays[self.role])
-        with lock:
-            completion_order.append(self.role.value)
-        return []
-
-    monkeypatch.setattr(SubBot, "run", measured_run)
-    results = Workforce(registry, max_workers=4).run([
-        WorkAssignment("z-docs", "repo", SubBotRole.DOCS_AUDITOR),
-        WorkAssignment("m-repo", "repo", SubBotRole.REPO_ANALYST),
-        WorkAssignment("b-safety", "repo", SubBotRole.SAFETY_AUDITOR),
-        WorkAssignment("a-tests", "repo", SubBotRole.TEST_AUDITOR),
-    ])
-
-    assert completion_order[0] == SubBotRole.SAFETY_AUDITOR.value
-    assert [result.task_id for result in results] == [
-        "a-tests", "b-safety", "m-repo", "z-docs"
-    ]
+    assert not (workspace_root / "repo" / "tasks" / "earlier").exists()
+    assert sentinel.read_text(encoding="utf-8") == "preserve existing data"

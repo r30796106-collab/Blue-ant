@@ -111,6 +111,30 @@ class Workforce:
             if not isinstance(job.role, SubBotRole):
                 raise ValueError("role must be an approved SubBotRole")
             self.registry.get(job.project_id)
+
+        # Check every snapshot destination before the first workspace or audit
+        # side effect, so a later conflict cannot leave earlier task snapshots.
+        if self.snapshot_sources:
+            for job in jobs:
+                project_workspace = self.registry.workspace_for(job.project_id)
+                tasks_root = project_workspace / "tasks"
+                if tasks_root.is_symlink():
+                    raise ValueError("tasks directory must not be a symlink")
+                task_workspace = tasks_root / job.task_id
+                if task_workspace.is_symlink():
+                    raise ValueError("task workspace must not be a symlink")
+                resolved = task_workspace.resolve(strict=False)
+                try:
+                    resolved.relative_to(tasks_root.resolve())
+                except ValueError as exc:
+                    raise ValueError("task workspace escapes its tasks directory") from exc
+                if task_workspace.exists() and (
+                    not task_workspace.is_dir() or any(task_workspace.iterdir())
+                ):
+                    raise ValueError(
+                        "snapshot task workspace must be absent or empty; refusing to overwrite"
+                    )
+
         if self.audit is not None:
             verification = self.audit.verify()
             if not verification.valid:
