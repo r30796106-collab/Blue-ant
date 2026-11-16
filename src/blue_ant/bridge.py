@@ -7,7 +7,9 @@ approve patches.
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -82,11 +84,26 @@ def validate_bridge_command(value: Any) -> dict[str, Any]:
 def load_bridge_command(path: str | Path) -> dict[str, Any]:
     """Load a bounded JSON command file and validate its exact schema."""
     source = Path(path)
-    if source.stat().st_size > 16_384:
-        raise ValueError("bridge command exceeds the 16 KiB limit")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
-        value = strict_json_loads(source.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        fd = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError("bridge command path must be a regular, non-symlink file") from exc
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("bridge command path must be a regular, non-symlink file")
+        if info.st_size > 16_384:
+            raise ValueError("bridge command exceeds the 16 KiB limit")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(16_385)
+        if len(raw) > 16_384:
+            raise ValueError("bridge command exceeds the 16 KiB limit")
+    finally:
+        os.close(fd)
+    try:
+        value = strict_json_loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read bridge command JSON: {exc}") from exc
     return validate_bridge_command(value)
 
