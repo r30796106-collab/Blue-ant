@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from blue_ant.approved_task_bundle import stage_bundle, validate_bundle
+from blue_ant.approved_task_bundle import _strict_json_loads, stage_bundle, validate_bundle
 
 
 def make_bundle():
@@ -223,3 +223,26 @@ def test_accepts_eight_independent_tasks_and_rejects_nine():
     })
     with pytest.raises(ValueError, match="1–8"):
         validate_bundle(bundle)
+
+
+def test_strict_json_parser_rejects_duplicate_keys_at_any_depth():
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        _strict_json_loads('{"apply_approved": false, "apply_approved": true}')
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        _strict_json_loads('{"proposal": {"task_id": "first", "task_id": "second"}}')
+
+
+def test_cli_rejects_duplicate_approval_key_before_staging(tmp_path):
+    from blue_ant.approved_task_bundle import main
+
+    source = tmp_path / "bundle.json"
+    payload = json.dumps(make_bundle()).replace(
+        '"apply_approved": true',
+        '"apply_approved": false, "apply_approved": true',
+        1,
+    )
+    source.write_text(payload, encoding="utf-8")
+    output = tmp_path / "output"
+
+    assert main(["--input", str(source), "--output-dir", str(output)]) == 2
+    assert not output.exists()
