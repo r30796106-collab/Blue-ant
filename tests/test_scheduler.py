@@ -258,3 +258,20 @@ def test_scheduler_rejects_duplicate_task_ids_before_execution() -> None:
         Scheduler().run(tasks)
 
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"task_id": None}, "task_id must be a non-empty string"),
+        ({"run": None}, "run must be callable"),
+        ({"depends_on": ["parent"]}, "depends_on must be a tuple"),
+        ({"depends_on": ("parent", "")}, "depends_on must be a tuple"),
+        ({"depends_on": ("parent", "parent")}, "duplicate task IDs"),
+    ],
+)
+def test_task_spec_rejects_invalid_inputs(kwargs, message):
+    values = {"task_id": "valid", "run": lambda: None}
+    values.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        TaskSpec(**values)
