@@ -153,7 +153,7 @@ def prepare_task(workspace: str | Path, task: dict[str, Any]) -> dict[str, Any]:
 
 def prepare_plan(workspace: str | Path, plan: dict[str, Any]) -> dict[str, Any]:
     if (not isinstance(plan, dict)
-        or isinstance(plan.get("schema_version"), bool)
+        or type(plan.get("schema_version")) is not int
         or plan.get("schema_version") != 1
         or not isinstance(plan.get("tasks"), list)):
         raise ValueError("development plan must be a schema v1 object with a tasks array")
