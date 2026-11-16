@@ -376,3 +376,17 @@ def test_resource_policy_caps_actual_workforce_concurrency(tmp_path: Path, monke
     assert len(results) == 4
     assert all(result.error is None for result in results)
     assert peak == 2
+
+
+def test_invalid_assignment_id_does_not_create_project_workspace(tmp_path: Path):
+    source = make_project(tmp_path, "repo")
+    workspace_root = tmp_path / "workspaces"
+    registry = ProjectRegistry(workspace_root)
+    registry.register("repo", source)
+
+    with pytest.raises(ValueError, match="lowercase slug"):
+        Workforce(registry).run([
+            WorkAssignment("../invalid", "repo", SubBotRole.DOCS_AUDITOR)
+        ])
+
+    assert not (workspace_root / "repo").exists()
