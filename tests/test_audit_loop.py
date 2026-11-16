@@ -124,3 +124,21 @@ def test_executor_task_id_mismatch_stops_before_next_role():
     assert report.cycles_used == 1
     assert calls == [SubBotRole.REPO_ANALYST]
     assert "task_id" in (report.cycles[0].error or "")
+
+
+def test_executor_exception_stops_loop_before_next_role():
+    calls = []
+
+    def execute(role, cycle):
+        calls.append(role)
+        raise RuntimeError("simulated executor failure")
+
+    report = BoundedAuditLoop().run(
+        [SubBotRole.REPO_ANALYST, SubBotRole.TEST_AUDITOR], execute=execute
+    )
+
+    assert calls == [SubBotRole.REPO_ANALYST]
+    assert report.stop_reason == "worker_error"
+    assert report.cycles_used == 1
+    assert report.cycles[0].status == "failed"
+    assert report.cycles[0].error == "RuntimeError: simulated executor failure"
