@@ -162,3 +162,30 @@ def test_index_skips_single_file_over_per_file_limit(tmp_path: Path, monkeypatch
     indexed = SubBot.index_files(tmp_path)
 
     assert indexed == (("small.txt", "12"),)
+
+
+
+def test_index_bounds_actual_file_read_when_file_grows_after_stat(tmp_path: Path, monkeypatch):
+    import io
+    import blue_ant.subbots as subbots
+
+    monkeypatch.setattr(subbots, "_MAX_INDEX_FILE_BYTES", 3)
+    target = tmp_path / "growing.txt"
+    target.write_text("x", encoding="utf-8")
+    original_open = Path.open
+    requested_sizes = []
+
+    class OversizedReader(io.BytesIO):
+        def read(self, size=-1):
+            requested_sizes.append(size)
+            return super().read(size)
+
+    def growing_open(path, *args, **kwargs):
+        if path == target:
+            return OversizedReader(b"secret-data")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", growing_open)
+
+    assert SubBot.index_files(tmp_path) == ()
+    assert requested_sizes == [4]
