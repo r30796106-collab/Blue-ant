@@ -1,6 +1,6 @@
 import pytest
 
-from blue_ant.ci_evidence import validate_ci_evidence
+from blue_ant import validate_ci_evidence
 
 REPOSITORY = "r30796106-collab/VoiceStudio"
 REF = "upgrade/parallel-track-2026-11-17"
