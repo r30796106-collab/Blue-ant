@@ -68,6 +68,8 @@ class PortfolioProject:
         """
         if not isinstance(path, str) or not path or "\\" in path:
             return False
+        if any(part in {"", ".", ".."} for part in path.split("/")):
+            return False
         candidate = PurePosixPath(path)
         if candidate.is_absolute() or any(part in {"", ".", ".."} for part in candidate.parts):
             return False
@@ -107,6 +109,9 @@ class PortfolioRegistry:
         registry_path = Path(path)
         if registry_path.is_symlink() or not registry_path.is_file():
             raise ValueError("portfolio registry must be a regular non-symlink file")
+        for ancestor in (registry_path.parent, *registry_path.parent.parents):
+            if ancestor.is_symlink():
+                raise ValueError("portfolio registry parent directories must not be symlinks")
         if registry_path.stat().st_size > 256 * 1024:
             raise ValueError("portfolio registry exceeds the 256 KiB limit")
         try:

@@ -122,7 +122,7 @@ def test_registry_rejects_unknown_or_missing_fields(tmp_path):
 def test_registry_rejects_duplicate_project_ids(tmp_path):
     path = _write_config(
         tmp_path,
-        lambda data: data["projects"].append(data["projects"][0].copy()),
+        lambda data: data["projects"].__setitem__(3, data["projects"][0].copy()),
     )
     with pytest.raises(ValueError, match="IDs must be unique"):
         PortfolioRegistry.load(path)
