@@ -32,6 +32,7 @@ def resolve_matrix(project_ids_json: str, registry: PortfolioRegistry) -> dict[s
             "repository": project.repository,
             "ref": project.default_branch,
             "audited_baseline_sha": project.audited_baseline_sha,
+            "max_workers": registry.max_workers_per_project,
         })
     return {"include": projects}
 
@@ -40,10 +41,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Resolve registered project IDs for the workforce workflow")
     parser.add_argument("--project-ids", required=True, help="JSON array of registered project IDs")
     parser.add_argument("--registry", default="config/portfolio.json", help="portfolio registry path")
+    parser.add_argument("--github-output", help="append validated concurrency limits to a GitHub Actions output file")
     args = parser.parse_args(argv)
     try:
         registry = PortfolioRegistry.load(Path(args.registry))
         print(json.dumps(resolve_matrix(args.project_ids, registry), separators=(",", ":")))
+        if args.github_output:
+            with Path(args.github_output).open("a", encoding="utf-8") as output:
+                output.write(f"max_parallel_projects={registry.max_parallel_projects}\\n")
         return 0
     except (OSError, ValueError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
