@@ -236,7 +236,11 @@ jobs:
         run: |
           gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$GITHUB_SHA"
           gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
-          gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          if [ "$TARGET_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          else
+            echo "Same-repository pull-request CI already runs against the PR head; skipping the standard-library-only target test runner."
+          fi
       
       - name: Report result on instruction issue
         if: always()
