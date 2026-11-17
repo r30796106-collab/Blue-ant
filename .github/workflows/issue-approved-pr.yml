@@ -117,7 +117,7 @@ jobs:
 
       - name: Reject duplicate issue execution before target checkout
         env:
-          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -138,7 +138,7 @@ jobs:
         with:
           repository: ${{ steps.instruction.outputs.target_repository }}
           ref: ${{ steps.instruction.outputs.target_ref }}
-          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          token: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           path: target
           persist-credentials: true
 
@@ -198,7 +198,7 @@ jobs:
 
       - name: Open pull request
         env:
-          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           BRANCH: ${{ steps.commit.outputs.branch }}
