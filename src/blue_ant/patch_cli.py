@@ -9,6 +9,7 @@ import sys
 from .audit import AuditLog
 from .patches import FileChange, PatchProposal, apply_patch_proposal
 from .json_utils import strict_json_loads
+from .portfolio import PortfolioRegistry
 
 
 def load_proposal(path: str | Path) -> PatchProposal:
@@ -35,12 +36,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Review and apply a Blue Ant patch proposal")
     parser.add_argument("--workspace", required=True, help="Dedicated disposable workspace")
     parser.add_argument("--proposal", required=True, help="Path to proposal JSON")
+    parser.add_argument("--portfolio", required=True, help="Approved portfolio registry JSON")
     parser.add_argument("--approve", action="store_true", help="Explicitly approve and apply changes")
     parser.add_argument("--audit-log", help="Override the default hash-chained workspace audit log path")
     args = parser.parse_args(argv)
 
     try:
         proposal = load_proposal(args.proposal)
+        portfolio = PortfolioRegistry.load(args.portfolio)
+        portfolio.validate_paths(proposal.project_id, [change.path for change in proposal.changes])
         print(f"Proposal: {proposal.proposal_id}")
         print(f"Project/task: {proposal.project_id}/{proposal.task_id}")
         for change in proposal.changes:
@@ -51,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         audit_path = Path(args.audit_log) if args.audit_log else Path(args.workspace) / ".blue-ant" / "patch-audit.jsonl"
         audit = AuditLog(audit_path)
-        result = apply_patch_proposal(args.workspace, proposal, approved=True, audit=audit)
+        result = apply_patch_proposal(args.workspace, proposal, approved=True, audit=audit, portfolio_registry=portfolio)
         verification = audit.verify()
         if not verification.valid:
             raise RuntimeError(f"audit log failed verification: {verification.error}")
