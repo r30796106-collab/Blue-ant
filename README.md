@@ -639,3 +639,42 @@ ChatGPT API integration, or unattended controller. The caller must provide
 the event and invoke the command. It has no credentials, shell execution,
 patch approval/application, GitHub writes, merge, or deployment capability.
 The bridge runner continues to inspect the target read-only.
+
+## Repository-owner release hardening
+
+Before treating a release as merge-gated, configure and verify GitHub protection
+for the `main` branch. Workflow checks alone do not prevent a repository owner
+or another writer from pushing directly to an unprotected default branch.
+
+In **Settings → Branches → Add branch protection rule** (or the equivalent
+repository ruleset), target exactly `main` and configure:
+
+- Require a pull request before merging.
+- Require these status checks to pass:
+  - `test (3.12)`
+  - `test (3.13)`
+  - `test (3.14)`
+  - `package-smoke`
+  - `read-only-review`
+- Require branches to be up to date before merging.
+- Require all review conversations to be resolved.
+- Block force pushes and branch deletion.
+- Do not configure bypass actors for the required checks unless a documented
+  emergency process explicitly authorizes them.
+
+The five check names above are the PR checks produced by
+`.github/workflows/tests.yml`. Confirm the exact names shown by GitHub when
+creating the rule. The read-only review job is a PR-only check and is skipped
+on ordinary pushes to `main`.
+
+The project merge controller must independently verify the current PR
+head/base, mergeability, required CI results, and unresolved review threads
+before any merge. The current V1 repository workflows never merge PRs
+automatically. GitHub branch protection is a separate defense-in-depth
+control; a successful workflow run does not enable that repository setting
+automatically.
+
+**Release gate:** do not mark V1 release-ready until an owner verifies that
+the `main` protection rule is active and that a test PR cannot merge while
+any required check is failing or pending. This repository setting must be
+enabled in GitHub; a source-code change cannot turn it on.
