@@ -176,15 +176,19 @@ def test_rejects_multiple_changes_and_large_content(tmp_path):
 
 def test_cli_writes_proposal_json_without_approval(tmp_path):
     from blue_ant.controlled_proposal_cli import main
+    from pathlib import Path
     workspace = tmp_path / "workspace"
-    (workspace / "src").mkdir(parents=True)
-    (workspace / "src" / "example.py").write_text("old\n", encoding="utf-8")
+    (workspace / "src" / "blue_ant").mkdir(parents=True)
+    (workspace / "src" / "blue_ant" / "example.py").write_text("old\n", encoding="utf-8")
+    value = plan(path="src/blue_ant/example.py")
+    value["project_id"] = "blue-ant"
     plan_file = tmp_path / "plan.json"
-    plan_file.write_text(json.dumps(plan()), encoding="utf-8")
+    plan_file.write_text(json.dumps(value), encoding="utf-8")
     change_file = tmp_path / "change.json"
-    change_file.write_text(json.dumps({"path": "src/example.py", "content": "new\n"}), encoding="utf-8")
+    change_file.write_text(json.dumps({"path": "src/blue_ant/example.py", "content": "new\n"}), encoding="utf-8")
     output = tmp_path / "proposal.json"
-    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--change", str(change_file), "--output", str(output)]) == 0
+    portfolio = Path(__file__).resolve().parents[1] / "config" / "portfolio.json"
+    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--portfolio", str(portfolio), "--change", str(change_file), "--output", str(output)]) == 0
     proposal = json.loads(output.read_text(encoding="utf-8"))
     assert proposal["task_id"] == "review-finding-1"
     assert proposal["changes"][0]["expected_sha256"]
@@ -230,8 +234,8 @@ def test_controlled_proposal_cli_rejects_duplicate_plan_keys(tmp_path, capsys):
     output = tmp_path / "proposal.json"
     assert main([
         "--workspace", str(workspace), "--plan", str(plan_file),
-        "--task-id", "review-finding-1", "--change", str(change_file),
-        "--output", str(output),
+        "--task-id", "review-finding-1", "--portfolio", str(Path(__file__).resolve().parents[1] / "config" / "portfolio.json"),
+        "--change", str(change_file), "--output", str(output),
     ]) == 2
     assert "duplicate JSON object key" in capsys.readouterr().err
     assert not output.exists()
