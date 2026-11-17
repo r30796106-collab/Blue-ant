@@ -41,3 +41,16 @@ def test_main_ci_jobs_have_bounded_execution_time():
 
     for job_name, section in sections.items():
         assert "    timeout-minutes: 30" in section, job_name
+
+
+def test_approved_worker_prefers_github_token_for_same_repository():
+    workflow = (WORKFLOWS / "issue-approved-pr.yml").read_text(encoding="utf-8")
+    same_repository_token = (
+        "${{ steps.instruction.outputs.target_repository == github.repository "
+        "&& github.token || secrets.BLUE_ANT_WORKER_TOKEN }}"
+    )
+
+    assert workflow.count(same_repository_token) == 3
+    assert "${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}" not in workflow
+    assert "BLUE_ANT_WORKER_TOKEN" in workflow
+
