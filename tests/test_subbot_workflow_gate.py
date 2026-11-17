@@ -28,3 +28,16 @@ def test_manual_review_workflow_is_read_only_and_manual_only():
     assert "contents: read" in workflow
     assert "pull-requests: read" in workflow
     assert "persist-credentials: false" in workflow
+
+
+
+def test_main_ci_jobs_have_bounded_execution_time():
+    workflow = (WORKFLOWS / "tests.yml").read_text(encoding="utf-8")
+    sections = {
+        "test": workflow.split("  test:", 1)[1].split("\n  package-smoke:", 1)[0],
+        "package-smoke": workflow.split("  package-smoke:", 1)[1].split("\n  read-only-review:", 1)[0],
+        "read-only-review": workflow.split("  read-only-review:", 1)[1],
+    }
+
+    for job_name, section in sections.items():
+        assert "    timeout-minutes: 30" in section, job_name
