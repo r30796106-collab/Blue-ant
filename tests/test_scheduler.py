@@ -418,3 +418,9 @@ def test_scheduler_blocks_maximum_fan_out_after_root_failure() -> None:
     assert results["root"].status == TaskStatus.FAILED
     assert all(results[f"child-{index:03d}"].status == TaskStatus.BLOCKED for index in range(255))
     assert child_calls == []
+
+
+@pytest.mark.parametrize("max_attempts", [True, 2.0, "2"])
+def test_task_spec_rejects_non_integer_retry_count(max_attempts) -> None:
+    with pytest.raises(ValueError, match="max_attempts must be an integer"):
+        TaskSpec("invalid-retry-count", lambda: None, max_attempts=max_attempts)
