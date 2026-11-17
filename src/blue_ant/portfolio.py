@@ -22,6 +22,7 @@ _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
+_CONTROL_PLANE_PATHS = frozenset({"config/portfolio.json", "src/blue_ant/portfolio.py", "src/blue_ant/patches.py", "src/blue_ant/controlled_proposal.py", "src/blue_ant/patch_cli.py", "src/blue_ant/controlled_proposal_cli.py", ".github/workflows/multi-repository-workforce.yml"})
 _PATH_PATTERN = re.compile(r"^[A-Za-z0-9_.*?/-]+$")
 
 _POLICY_KEYS = {
@@ -75,6 +76,8 @@ class PortfolioProject:
             return False
         normalized = candidate.as_posix()
         if normalized.startswith(".git/") or normalized == ".git":
+            return False
+        if normalized in _CONTROL_PLANE_PATHS:
             return False
         if any(fnmatch.fnmatchcase(normalized, pattern) for pattern in self.denied_paths):
             return False
@@ -198,6 +201,17 @@ class PortfolioRegistry:
             return self._projects[project_id]
         except KeyError as exc:
             raise KeyError(f"portfolio project is not registered: {project_id}") from exc
+
+    def validate_paths(self, project_id: str, paths: tuple[str, ...] | list[str]) -> PortfolioProject:
+        """Fail closed unless every changed path is inside the registered scope."""
+        project = self.get(project_id)
+        if not isinstance(paths, (tuple, list)) or not paths:
+            raise ValueError("at least one changed path is required for scope validation")
+        rejected = [path for path in paths if not project.allows_path(path)]
+        if rejected:
+            preview = ", ".join(repr(path) for path in rejected[:5])
+            raise PermissionError(f"project {project_id!r} cannot modify out-of-scope path(s): {preview}")
+        return project
 
     def list_projects(self) -> tuple[PortfolioProject, ...]:
         return tuple(self._projects[key] for key in sorted(self._projects))
