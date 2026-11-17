@@ -51,7 +51,7 @@ jobs:
             echo "The private ai-trading repository requires BLUE_ANT_WORKER_TOKEN; no checkout was attempted."
             exit 1
           fi
-          matrix="$(PYTHONPATH=blue-ant/src python -m blue_ant.portfolio_cli --project-ids "$PROJECT_IDS")"
+          matrix="$(PYTHONPATH=blue-ant/src python -m blue_ant.portfolio_cli --registry blue-ant/config/portfolio.json --project-ids "$PROJECT_IDS")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   workforce:
