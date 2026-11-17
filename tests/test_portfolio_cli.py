@@ -20,12 +20,14 @@ def test_matrix_resolves_registered_ids_to_pinned_repository_coordinates():
                 "repository": "r30796106-collab/Elon",
                 "ref": "master",
                 "audited_baseline_sha": REGISTRY.get("elon").audited_baseline_sha,
+                "max_workers": REGISTRY.max_workers_per_project,
             },
             {
                 "project_id": "voicestudio",
                 "repository": "r30796106-collab/VoiceStudio",
                 "ref": "main",
                 "audited_baseline_sha": REGISTRY.get("voicestudio").audited_baseline_sha,
+                "max_workers": REGISTRY.max_workers_per_project,
             },
         ]
     }

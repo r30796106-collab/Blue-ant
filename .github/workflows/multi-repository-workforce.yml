@@ -8,11 +8,6 @@ on:
         required: true
         type: string
         default: '["blue-ant","elon","ai-trading","voicestudio"]'
-      snapshot_sources:
-        description: "Create bounded private source snapshots for specialist tasks"
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -24,6 +19,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      max_parallel_projects: ${{ steps.matrix.outputs.max_parallel_projects }}
     steps:
       - name: Checkout Blue Ant worker
         uses: actions/checkout@v4
@@ -51,7 +47,7 @@ jobs:
             echo "The private ai-trading repository requires BLUE_ANT_WORKER_TOKEN; no checkout was attempted."
             exit 1
           fi
-          matrix="$(PYTHONPATH=blue-ant/src python -m blue_ant.portfolio_cli --registry blue-ant/config/portfolio.json --project-ids "$PROJECT_IDS")"
+          matrix="$(PYTHONPATH=blue-ant/src python -m blue_ant.portfolio_cli --registry blue-ant/config/portfolio.json --project-ids "$PROJECT_IDS" --github-output "$GITHUB_OUTPUT")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   workforce:
@@ -61,7 +57,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: ${{ fromJSON(needs.prepare.outputs.max_parallel_projects) }}
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - name: Checkout Blue Ant worker
@@ -75,6 +71,7 @@ jobs:
         with:
           repository: ${{ matrix.project.repository }}
           ref: ${{ matrix.project.ref }}
+          fetch-depth: 0
           token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
           path: targets/${{ matrix.project.project_id }}
           persist-credentials: false
@@ -94,18 +91,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          checked_out_sha="$(git -C "targets/$PROJECT_ID" rev-parse HEAD)"
+          git -C "targets/$PROJECT_ID" merge-base --is-ancestor "$AUDITED_BASELINE_SHA" "$checked_out_sha" || {
+            echo "Checked-out target history does not descend from its audited baseline; refusing an unverified audit."
+            exit 1
+          }
           args=(
             --project "$PROJECT_ID=targets/$PROJECT_ID"
-            --max-workers 4
+            --max-workers "${{ matrix.project.max_workers }}"
             --output "artifacts/$PROJECT_ID-report.json"
           )
-          if [ "${{ inputs.snapshot_sources }}" = "true" ]; then
-            args+=(--snapshot-sources)
-          fi
+          args+=(--snapshot-sources --shared-snapshot-sources)
           blue-ant-workforce "${args[@]}"
-          printf '{"project_id":"%s","repository":"%s","ref":"%s","audited_baseline_sha":"%s"}\n' \
+          printf '{"project_id":"%s","repository":"%s","ref":"%s","audited_baseline_sha":"%s","inspected_commit_sha":"%s"}\n' \
             "$PROJECT_ID" "${{ matrix.project.repository }}" "${{ matrix.project.ref }}" \
-            "$AUDITED_BASELINE_SHA" > "artifacts/$PROJECT_ID-baseline.json"
+            "$AUDITED_BASELINE_SHA" "$checked_out_sha" > "artifacts/$PROJECT_ID-baseline.json"
 
       - name: Upload workforce report
         uses: actions/upload-artifact@v4

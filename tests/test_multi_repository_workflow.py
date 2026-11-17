@@ -26,6 +26,23 @@ def test_multi_repository_workflow_keeps_private_repo_checkout_fail_closed():
 def test_multi_repository_workforce_is_bounded_and_failure_isolated():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "fail-fast: false" in workflow
-    assert "max-parallel: 4" in workflow
-    assert "--max-workers 4" in workflow
+    assert "max_parallel_projects" in workflow
+    assert "max-parallel: ${{ fromJSON(needs.prepare.outputs.max_parallel_projects) }}" in workflow
+    assert '--max-workers "${{ matrix.project.max_workers }}"' in workflow
     assert "timeout-minutes: 30" in workflow
+
+
+
+def test_multi_repository_workforce_audits_a_verified_baseline_descendant_in_private_snapshots():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in workflow
+    assert "merge-base --is-ancestor" in workflow
+    assert "inspected_commit_sha" in workflow
+    assert "args+=(--snapshot-sources --shared-snapshot-sources)" in workflow
+
+
+def test_multi_repository_workforce_uses_registry_limits_not_hardcoded_worker_counts():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "--github-output \"$GITHUB_OUTPUT\"" in workflow
+    assert "max_parallel_projects=" in (ROOT / "src" / "blue_ant" / "portfolio_cli.py").read_text(encoding="utf-8")
+    assert "max_workers" in (ROOT / "src" / "blue_ant" / "portfolio_cli.py").read_text(encoding="utf-8")
