@@ -667,10 +667,12 @@ The five check names above are the PR checks produced by
 creating the rule. The read-only review job is a PR-only check and is skipped
 on ordinary pushes to `main`.
 
-Blue Ant's controller also verifies the current PR head/base, mergeability,
-required CI results, and unresolved review threads before it merges. GitHub
-branch protection is a separate defense-in-depth control; a successful
-workflow run does not enable that repository setting automatically.
+The project merge controller must independently verify the current PR
+head/base, mergeability, required CI results, and unresolved review threads
+before any merge. The current V1 repository workflows never merge PRs
+automatically. GitHub branch protection is a separate defense-in-depth
+control; a successful workflow run does not enable that repository setting
+automatically.
 
 **Release gate:** do not mark V1 release-ready until an owner verifies that
 the `main` protection rule is active and that a test PR cannot merge while
