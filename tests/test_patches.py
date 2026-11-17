@@ -7,9 +7,19 @@ import pytest
 from blue_ant.patches import (
     FileChange,
     PatchProposal,
-    apply_patch_proposal,
+    apply_patch_proposal as _apply_patch_proposal,
     sha256_text,
 )
+from blue_ant.portfolio import PortfolioProject, PortfolioRegistry, ProjectPolicy
+
+_TEST_POLICY = ProjectPolicy(True, True, True, False, False, False, False, False, True)
+_TEST_PROJECT = PortfolioProject("demo", "r30796106-collab/demo", "main", "a" * 40, ("**",), (".git/**",), _TEST_POLICY)
+_TEST_PORTFOLIO = PortfolioRegistry((_TEST_PROJECT,), max_parallel_projects=1, max_workers_per_project=1)
+
+
+def apply_patch_proposal(*args, **kwargs):
+    kwargs.setdefault("portfolio_registry", _TEST_PORTFOLIO)
+    return _apply_patch_proposal(*args, **kwargs)
 
 
 def proposal(*changes: FileChange) -> PatchProposal:

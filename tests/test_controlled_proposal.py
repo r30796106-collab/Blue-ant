@@ -1,8 +1,19 @@
 import json
+from pathlib import Path
 
 import pytest
 
-from blue_ant.controlled_proposal import build_patch_proposal, proposal_to_dict
+from blue_ant.controlled_proposal import build_patch_proposal as _build_patch_proposal, proposal_to_dict
+from blue_ant.portfolio import PortfolioProject, PortfolioRegistry, ProjectPolicy
+
+_TEST_POLICY = ProjectPolicy(True, True, True, False, False, False, False, False, True)
+_TEST_PROJECT = PortfolioProject("demo", "r30796106-collab/demo", "main", "a" * 40, ("**",), (".git/**",), _TEST_POLICY)
+_TEST_PORTFOLIO = PortfolioRegistry((_TEST_PROJECT,), max_parallel_projects=1, max_workers_per_project=1)
+
+
+def build_patch_proposal(*args, **kwargs):
+    kwargs.setdefault("portfolio_registry", _TEST_PORTFOLIO)
+    return _build_patch_proposal(*args, **kwargs)
 
 
 def plan(kind="audit_finding_review", role="repo_analyst", path="src/example.py"):
@@ -81,24 +92,27 @@ def test_multi_file_proposal_rejects_missing_extra_duplicate_and_too_many_paths(
 
 
 def test_multi_file_proposal_cli_writes_unapproved_json(tmp_path):
+    from pathlib import Path
     from blue_ant.controlled_proposal_cli import main
     workspace = tmp_path / "workspace"
-    (workspace / "src").mkdir(parents=True)
+    (workspace / "src" / "blue_ant").mkdir(parents=True)
     (workspace / "tests").mkdir()
-    (workspace / "src" / "app.py").write_text("old\n", encoding="utf-8")
+    (workspace / "src" / "blue_ant" / "app.py").write_text("old\n", encoding="utf-8")
     (workspace / "tests" / "test_app.py").write_text("old\n", encoding="utf-8")
     p = plan()
+    p["project_id"] = "blue-ant"
     p["tasks"][0].pop("path")
-    p["tasks"][0]["paths"] = ["src/app.py", "tests/test_app.py"]
+    p["tasks"][0]["paths"] = ["src/blue_ant/app.py", "tests/test_app.py"]
     plan_file = tmp_path / "plan.json"
     plan_file.write_text(json.dumps(p), encoding="utf-8")
     changes_file = tmp_path / "changes.json"
     changes_file.write_text(json.dumps([
-        {"path": "src/app.py", "content": "new app\n"},
+        {"path": "src/blue_ant/app.py", "content": "new app\n"},
         {"path": "tests/test_app.py", "content": "new test\n"},
     ]), encoding="utf-8")
     output = tmp_path / "proposal.json"
-    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--changes", str(changes_file), "--output", str(output)]) == 0
+    portfolio = Path(__file__).resolve().parents[1] / "config" / "portfolio.json"
+    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--portfolio", str(portfolio), "--changes", str(changes_file), "--output", str(output)]) == 0
     proposal = json.loads(output.read_text(encoding="utf-8"))
     assert len(proposal["changes"]) == 2
     assert all(item["expected_sha256"] for item in proposal["changes"])
@@ -173,15 +187,19 @@ def test_rejects_multiple_changes_and_large_content(tmp_path):
 
 def test_cli_writes_proposal_json_without_approval(tmp_path):
     from blue_ant.controlled_proposal_cli import main
+    from pathlib import Path
     workspace = tmp_path / "workspace"
-    (workspace / "src").mkdir(parents=True)
-    (workspace / "src" / "example.py").write_text("old\n", encoding="utf-8")
+    (workspace / "src" / "blue_ant").mkdir(parents=True)
+    (workspace / "src" / "blue_ant" / "example.py").write_text("old\n", encoding="utf-8")
+    value = plan(path="src/blue_ant/example.py")
+    value["project_id"] = "blue-ant"
     plan_file = tmp_path / "plan.json"
-    plan_file.write_text(json.dumps(plan()), encoding="utf-8")
+    plan_file.write_text(json.dumps(value), encoding="utf-8")
     change_file = tmp_path / "change.json"
-    change_file.write_text(json.dumps({"path": "src/example.py", "content": "new\n"}), encoding="utf-8")
+    change_file.write_text(json.dumps({"path": "src/blue_ant/example.py", "content": "new\n"}), encoding="utf-8")
     output = tmp_path / "proposal.json"
-    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--change", str(change_file), "--output", str(output)]) == 0
+    portfolio = Path(__file__).resolve().parents[1] / "config" / "portfolio.json"
+    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--portfolio", str(portfolio), "--change", str(change_file), "--output", str(output)]) == 0
     proposal = json.loads(output.read_text(encoding="utf-8"))
     assert proposal["task_id"] == "review-finding-1"
     assert proposal["changes"][0]["expected_sha256"]
@@ -227,8 +245,28 @@ def test_controlled_proposal_cli_rejects_duplicate_plan_keys(tmp_path, capsys):
     output = tmp_path / "proposal.json"
     assert main([
         "--workspace", str(workspace), "--plan", str(plan_file),
-        "--task-id", "review-finding-1", "--change", str(change_file),
-        "--output", str(output),
+        "--task-id", "review-finding-1", "--portfolio", str(Path(__file__).resolve().parents[1] / "config" / "portfolio.json"),
+        "--change", str(change_file), "--output", str(output),
     ]) == 2
     assert "duplicate JSON object key" in capsys.readouterr().err
     assert not output.exists()
+
+
+def test_controlled_proposal_cli_rejects_out_of_scope_without_output(tmp_path, capsys):
+    from pathlib import Path
+    from blue_ant.controlled_proposal_cli import main
+    workspace = tmp_path / "workspace"
+    (workspace / "security").mkdir(parents=True)
+    (workspace / "security" / "policy.py").write_text("safe\n", encoding="utf-8")
+    value = plan(path="security/policy.py")
+    value["project_id"] = "elon"
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(value), encoding="utf-8")
+    change_file = tmp_path / "change.json"
+    change_file.write_text(json.dumps({"path":"security/policy.py","content":"bad"}), encoding="utf-8")
+    output = tmp_path / "proposal.json"
+    portfolio = Path(__file__).resolve().parents[1] / "config" / "portfolio.json"
+    assert main(["--workspace", str(workspace), "--plan", str(plan_file), "--task-id", "review-finding-1", "--portfolio", str(portfolio), "--change", str(change_file), "--output", str(output)]) == 2
+    assert not output.exists()
+    assert (workspace / "security" / "policy.py").read_text(encoding="utf-8") == "safe\n"
+    assert "out-of-scope" in capsys.readouterr().err

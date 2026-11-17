@@ -148,3 +148,21 @@ def test_registry_rejects_oversized_and_symlink_config(tmp_path):
     alias.symlink_to(target)
     with pytest.raises(ValueError, match="non-symlink"):
         PortfolioRegistry.load(alias)
+
+
+def test_registry_validates_paths_and_unknown_projects_fail_closed():
+    registry = PortfolioRegistry.load(CONFIG)
+    assert registry.validate_paths("elon", ["engine/task_engine.py"]).project_id == "elon"
+    with pytest.raises(PermissionError, match="out-of-scope"):
+        registry.validate_paths("elon", ["engine/task_engine.py", "security/policy.py"])
+    with pytest.raises(KeyError, match="not registered"):
+        registry.validate_paths("missing", ["README.md"])
+
+
+@pytest.mark.parametrize("path", ["config/portfolio.json", "src/blue_ant/portfolio.py", "src/blue_ant/patches.py", "src/blue_ant/controlled_proposal.py", "src/blue_ant/patch_cli.py", "src/blue_ant/controlled_proposal_cli.py", ".github/workflows/multi-repository-workforce.yml"])
+def test_control_plane_paths_remain_denied_even_if_allowlist_is_widened(tmp_path, path):
+    config = _write_config(tmp_path, lambda data: data["projects"][1]["allowed_paths"].append("**"))
+    registry = PortfolioRegistry.load(config)
+    assert not registry.get("blue-ant").allows_path(path)
+    with pytest.raises(PermissionError, match="out-of-scope"):
+        registry.validate_paths("blue-ant", [path])

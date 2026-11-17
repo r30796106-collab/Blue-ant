@@ -8,6 +8,7 @@ intentionally not supported.
 from __future__ import annotations
 
 from .audit import AuditLog
+from .portfolio import PortfolioRegistry
 from dataclasses import dataclass
 import hashlib
 import os
@@ -125,6 +126,7 @@ def apply_patch_proposal(
     *,
     approved: bool = False,
     audit: AuditLog | None = None,
+    portfolio_registry: PortfolioRegistry,
 ) -> PatchResult:
     """Apply an explicitly approved proposal after complete validation.
 
@@ -147,6 +149,14 @@ def apply_patch_proposal(
         raise ValueError("patch proposal must contain at least one file change")
     if len(proposal.changes) > _MAX_PATCH_FILES:
         raise ValueError(f"patch proposal exceeds {_MAX_PATCH_FILES} files")
+    if not isinstance(portfolio_registry, PortfolioRegistry):
+        raise TypeError("portfolio_registry must be a PortfolioRegistry")
+    scope_paths = []
+    for change in proposal.changes:
+        if not isinstance(change, FileChange):
+            raise TypeError("each patch change must be a FileChange")
+        scope_paths.append(_safe_relative_path(change.path).as_posix())
+    portfolio_registry.validate_paths(proposal.project_id, scope_paths)
 
     supplied_root = Path(workspace).expanduser()
     _reject_symlink_components(supplied_root)
