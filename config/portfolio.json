@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "max_parallel_projects": 4,
+  "max_workers_per_project": 4,
+  "projects": [
+    {
+      "project_id": "blue-ant",
+      "repository": "r30796106-collab/Blue-ant",
+      "default_branch": "main",
+      "audited_baseline_sha": "d4a181b4a605d45356e9763fae32c096eb5c9df9",
+      "allowed_paths": ["src/blue_ant/**", "tests/**", ".github/workflows/**", "README.md", "pyproject.toml"],
+      "denied_paths": [".git/**", "secrets/**", "**/*.pem", "**/*.key"],
+      "policy": {
+        "require_explicit_patch_approval": true,
+        "require_independent_review": true,
+        "require_ci": true,
+        "allow_deploy": false,
+        "allow_real_money": false,
+        "allow_unrestricted_shell": false,
+        "allow_credential_access": false,
+        "allow_destructive_actions": false,
+        "preserve_existing_ai_configuration": true
+      }
+    },
+    {
+      "project_id": "elon",
+      "repository": "r30796106-collab/Elon",
+      "default_branch": "master",
+      "audited_baseline_sha": "3eb14876a4ccbd49f6a3714b735698fbe4def471",
+      "allowed_paths": ["core/**", "engine/**", "tests/**", ".github/workflows/**", "README.md", "main.py"],
+      "denied_paths": ["security/**", "backups/**", "logs/**", "engine/autonomous_controller.py", "core/audit.py", "providers/**", ".git/**", "**/*.pem", "**/*.key"],
+      "policy": {
+        "require_explicit_patch_approval": true,
+        "require_independent_review": true,
+        "require_ci": true,
+        "allow_deploy": false,
+        "allow_real_money": false,
+        "allow_unrestricted_shell": false,
+        "allow_credential_access": false,
+        "allow_destructive_actions": false,
+        "preserve_existing_ai_configuration": true
+      }
+    },
+    {
+      "project_id": "ai-trading",
+      "repository": "r30796106-collab/ai_crypto_bot",
+      "default_branch": "main",
+      "audited_baseline_sha": "69aba4139e9a88d1b54b024b44e1d08b08e91493",
+      "allowed_paths": ["src/**", "tests/**", ".github/workflows/**", "README.md", "pyproject.toml"],
+      "denied_paths": [".git/**", "credentials/**", "secrets/**", "live_execution/**", "**/*.pem", "**/*.key"],
+      "policy": {
+        "require_explicit_patch_approval": true,
+        "require_independent_review": true,
+        "require_ci": true,
+        "allow_deploy": false,
+        "allow_real_money": false,
+        "allow_unrestricted_shell": false,
+        "allow_credential_access": false,
+        "allow_destructive_actions": false,
+        "preserve_existing_ai_configuration": true
+      }
+    },
+    {
+      "project_id": "voicestudio",
+      "repository": "r30796106-collab/VoiceStudio",
+      "default_branch": "main",
+      "audited_baseline_sha": "49116c57b02ddd92939d164338f6355616dc20b3",
+      "allowed_paths": ["src/**", "tests/**", "docs/**", ".github/workflows/**", "README.md", "pyproject.toml"],
+      "denied_paths": [".git/**", "models/**", "outputs/**", "voice_profiles/**", "voice_projects/**", "**/*.wav", "**/*.mp3", "**/*.pem", "**/*.key"],
+      "policy": {
+        "require_explicit_patch_approval": true,
+        "require_independent_review": true,
+        "require_ci": true,
+        "allow_deploy": false,
+        "allow_real_money": false,
+        "allow_unrestricted_shell": false,
+        "allow_credential_access": false,
+        "allow_destructive_actions": false,
+        "preserve_existing_ai_configuration": true
+      }
+    }
+  ]
+}
