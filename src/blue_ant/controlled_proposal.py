@@ -54,7 +54,7 @@ def build_patch_proposal(
     task_id: str,
     changes: list[dict[str, Any]],
     *,
-    portfolio_registry: PortfolioRegistry | None = None,
+    portfolio_registry: PortfolioRegistry,
 ) -> PatchProposal:
     """Package a task's exact existing file allowlist into a hash-checked proposal."""
     if (not isinstance(development_plan, dict)
@@ -98,10 +98,9 @@ def build_patch_proposal(
             raise ValueError("proposed file content must be text")
         by_path[proposed_path] = change
     expected_order = [path.as_posix() for path in allowed_paths]
-    if portfolio_registry is not None:
-        if not isinstance(portfolio_registry, PortfolioRegistry):
-            raise TypeError("portfolio_registry must be a PortfolioRegistry")
-        portfolio_registry.validate_paths(project_id, expected_order)
+    if not isinstance(portfolio_registry, PortfolioRegistry):
+        raise TypeError("portfolio_registry must be a PortfolioRegistry")
+    portfolio_registry.validate_paths(project_id, expected_order)
     if set(by_path) != set(expected_order):
         raise ValueError("proposal is missing one or more explicitly allowed task paths")
     total_bytes = sum(len(by_path[path]["content"].encode("utf-8")) for path in expected_order)

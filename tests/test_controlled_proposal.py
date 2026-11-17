@@ -3,7 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from blue_ant.controlled_proposal import build_patch_proposal, proposal_to_dict
+from blue_ant.controlled_proposal import build_patch_proposal as _build_patch_proposal, proposal_to_dict
+from blue_ant.portfolio import PortfolioProject, PortfolioRegistry, ProjectPolicy
+
+_TEST_POLICY = ProjectPolicy(True, True, True, False, False, False, False, False, True)
+_TEST_PROJECT = PortfolioProject("demo", "r30796106-collab/demo", "main", "a" * 40, ("**",), (".git/**",), _TEST_POLICY)
+_TEST_PORTFOLIO = PortfolioRegistry((_TEST_PROJECT,), max_parallel_projects=1, max_workers_per_project=1)
+
+
+def build_patch_proposal(*args, **kwargs):
+    kwargs.setdefault("portfolio_registry", _TEST_PORTFOLIO)
+    return _build_patch_proposal(*args, **kwargs)
 
 
 def plan(kind="audit_finding_review", role="repo_analyst", path="src/example.py"):
