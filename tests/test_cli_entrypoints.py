@@ -22,6 +22,7 @@ CLI_MODULES = (
     "blue_ant.controlled_proposal_cli",
     "blue_ant.development_plan_cli",
     "blue_ant.patch_cli",
+    "blue_ant.portfolio_cli",
     "blue_ant.project_cli",
     "blue_ant.subbot_report",
     "blue_ant.workforce_cli",

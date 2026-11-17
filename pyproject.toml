@@ -29,6 +29,7 @@ blue-ant-bridge-runner = "blue_ant.bridge_runner:main"
 blue-ant-bridge-event = "blue_ant.bridge_event:main"
 blue-ant-task-bundle = "blue_ant.approved_task_bundle:main"
 blue-ant-project = "blue_ant.project_cli:main"
+blue-ant-portfolio = "blue_ant.portfolio_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
