@@ -429,6 +429,7 @@ def test_snapshot_batch_preflights_all_task_workspaces_before_side_effects(tmp_p
     assert not (workspace_root / "repo" / "tasks" / "earlier").exists()
     assert sentinel.read_text(encoding="utf-8") == "preserve existing data"
 
+
 def test_assignment_batch_limit_is_checked_before_workspace_or_audit_side_effects(tmp_path: Path):
     source = make_project(tmp_path, "repo")
     workspace_root = tmp_path / "workspaces"
