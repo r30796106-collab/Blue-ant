@@ -103,7 +103,7 @@ jobs:
 
       - name: Reject duplicate plan-task execution before target checkout
         env:
-          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -124,7 +124,7 @@ jobs:
         with:
           repository: ${{ steps.instruction.outputs.target_repository }}
           ref: ${{ steps.instruction.outputs.target_ref }}
-          token: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          token: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           path: target
           persist-credentials: true
 
@@ -180,7 +180,7 @@ jobs:
 
       - name: Open pull request
         env:
-          GH_TOKEN: ${{ secrets.BLUE_ANT_WORKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.instruction.outputs.target_repository == github.repository && github.token || secrets.BLUE_ANT_WORKER_TOKEN }}
           TARGET_REF: ${{ steps.instruction.outputs.target_ref }}
           TARGET_REPOSITORY: ${{ steps.instruction.outputs.target_repository }}
           BRANCH: ${{ steps.commit.outputs.branch }}
@@ -214,7 +214,11 @@ jobs:
         run: |
           gh workflow run tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_ref="$GITHUB_SHA"
           gh workflow run subbot-review.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
-          gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          if [ "$TARGET_REPOSITORY" != "$GITHUB_REPOSITORY" ]; then
+            gh workflow run target-python-tests.yml --repo "$GITHUB_REPOSITORY" --ref main -f target_repository="$TARGET_REPOSITORY" -f target_ref="$BRANCH"
+          else
+            echo "Same-repository pull-request CI already runs against the PR head; skipping the standard-library-only target test runner."
+          fi
 
       - name: Report result on instruction issue
         if: always()
