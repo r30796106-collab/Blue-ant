@@ -155,7 +155,7 @@ def apply_patch_proposal(
     for change in proposal.changes:
         if not isinstance(change, FileChange):
             raise TypeError("each patch change must be a FileChange")
-        scope_paths.append(change.path)
+        scope_paths.append(_safe_relative_path(change.path).as_posix())
     portfolio_registry.validate_paths(proposal.project_id, scope_paths)
 
     supplied_root = Path(workspace).expanduser()
