@@ -53,3 +53,18 @@ def test_matrix_never_accepts_user_supplied_repository_or_branch():
 def test_matrix_input_has_a_strict_size_limit():
     with pytest.raises(ValueError, match="4 KiB"):
         resolve_matrix(" " * 4097, REGISTRY)
+
+
+def test_github_output_writes_a_real_line_terminated_value(tmp_path):
+    from blue_ant.portfolio_cli import main
+
+    output = tmp_path / "github-output.txt"
+    result = main([
+        "--project-ids", '["blue-ant"]',
+        "--registry", str(ROOT / "config" / "portfolio.json"),
+        "--github-output", str(output),
+    ])
+    assert result == 0
+    assert output.read_text(encoding="utf-8") == (
+        f"max_parallel_projects={REGISTRY.max_parallel_projects}\\n"
+    )
