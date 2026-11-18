@@ -92,3 +92,22 @@ def test_evidence_result_is_immutable_and_normalizes_check_lists():
     assert result.passed_checks == ("unit", "lint")
     with pytest.raises((AttributeError, TypeError)):
         result.commit_sha = "b" * 40
+
+
+@pytest.mark.parametrize(
+    "expected",
+    [
+        {"expected_repository": "not a repository"},
+        {"expected_ref": ""},
+        {"expected_sha": "not-a-sha"},
+    ],
+)
+def test_rejects_malformed_expected_coordinates(expected):
+    arguments = {
+        "expected_repository": REPOSITORY,
+        "expected_ref": REF,
+        "expected_sha": SHA,
+    }
+    arguments.update(expected)
+    with pytest.raises(ValueError):
+        validate_ci_evidence(evidence(), **arguments)
