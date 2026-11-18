@@ -45,8 +45,16 @@ def validate_ci_evidence(
     required_checks = evidence["required_checks"]
     passed_checks = evidence["passed_checks"]
 
+    if not isinstance(expected_repository, str) or not _REPOSITORY.fullmatch(expected_repository):
+        raise ValueError("expected repository is invalid")
+    if not isinstance(expected_ref, str) or not expected_ref.strip() or len(expected_ref) > 255:
+        raise ValueError("expected ref is invalid")
+    if not isinstance(expected_sha, str) or not _SHA.fullmatch(expected_sha):
+        raise ValueError("expected commit SHA is invalid")
     if not isinstance(repository, str) or not _REPOSITORY.fullmatch(repository):
         raise ValueError("CI evidence repository is invalid")
+    if not isinstance(ref, str) or not ref.strip() or len(ref) > 255:
+        raise ValueError("CI evidence ref is invalid")
     if repository != expected_repository or ref != expected_ref:
         raise ValueError("CI evidence target does not match the reviewed repository/ref")
     if not isinstance(commit_sha, str) or not _SHA.fullmatch(commit_sha):
