@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(resolve_matrix(args.project_ids, registry), separators=(",", ":")))
         if args.github_output:
             with Path(args.github_output).open("a", encoding="utf-8") as output:
-                output.write(f"max_parallel_projects={registry.max_parallel_projects}\\n")
+                output.write(f"max_parallel_projects={registry.max_parallel_projects}\n")
         return 0
     except (OSError, ValueError, KeyError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

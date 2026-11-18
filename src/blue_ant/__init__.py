@@ -13,6 +13,7 @@ from .audit_loop import AuditCycle, AuditLoopReport, BoundedAuditLoop
 from .development_plan import DevelopmentPlan, PlanTask, generate_development_plan, plan_to_dict
 from .controlled_proposal import build_patch_proposal, proposal_to_dict
 from .workspace_snapshot import SnapshotResult, create_workspace_snapshot
+from .ci_evidence import CIEvidence, validate_ci_evidence
 
 __all__ = [
     "Scheduler", "TaskResult", "TaskSpec", "TaskStatus",
@@ -27,4 +28,5 @@ __all__ = [
     "DevelopmentPlan", "PlanTask", "generate_development_plan", "plan_to_dict",
     "build_patch_proposal", "proposal_to_dict",
     "SnapshotResult", "create_workspace_snapshot",
+    "CIEvidence", "validate_ci_evidence",
 ]
