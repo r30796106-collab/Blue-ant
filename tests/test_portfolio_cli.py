@@ -66,5 +66,5 @@ def test_github_output_writes_a_real_line_terminated_value(tmp_path):
     ])
     assert result == 0
     assert output.read_text(encoding="utf-8") == (
-        f"max_parallel_projects={REGISTRY.max_parallel_projects}\\n"
+        f"max_parallel_projects={REGISTRY.max_parallel_projects}\n"
     )
